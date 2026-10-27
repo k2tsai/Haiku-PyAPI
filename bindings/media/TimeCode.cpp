@@ -90,7 +90,16 @@ py::class_<BTimeCode>(m, "BTimeCode")
 .def("GetData", &BTimeCode::GetData, "", py::arg("_hours"), py::arg("_minutes"), py::arg("_seconds"), py::arg("_frames"), py::arg("_type")=NULL)
 .def("Microseconds", &BTimeCode::Microseconds, "")
 .def("LinearFrames", &BTimeCode::LinearFrames, "")
-.def("GetString", &BTimeCode::GetString, "", py::arg("string"))
+// FIXED (2026-10-26): beta6's GetString(char* string) (os/media/TimeCode.h:98)
+// WRITES the timecode string into the caller's buffer; the old char* binding
+// handed pybind's throwaway str copy (overflow + lost result). Now: internal
+// buffer, returns the string (or "" on failure).
+.def("GetString", [](const BTimeCode& self) -> std::string {
+    char buffer[16];
+    buffer[0] = '\0';
+    self.GetString(buffer);
+    return std::string(buffer);
+}, "")
 ;
 
 m.def("us_to_timecode", &us_to_timecode, "", py::arg("micros"), py::arg("hours"), py::arg("minutes"), py::arg("seconds"), py::arg("frames"), py::arg("code")=NULL);

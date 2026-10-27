@@ -4,6 +4,7 @@
 #include <pybind11/operators.h>
 
 #include <media/MediaDecoder.h>
+#include <cstring>
 
 namespace py = pybind11;
 using namespace BPrivate;
@@ -36,7 +37,24 @@ py::class_<BMediaDecoder,PyBMediaDecoder>(m, "BMediaDecoder")
 .def("SetInputFormat", &BMediaDecoder::SetInputFormat, "", py::arg("in_format"), py::arg("in_info")=NULL, py::arg("in_size")=0) // TODO
 .def("SetOutputFormat", &BMediaDecoder::SetOutputFormat, "", py::arg("output_format"))
 .def("Decode", &BMediaDecoder::Decode, "", py::arg("out_buffer"), py::arg("out_frameCount"), py::arg("out_mh"), py::arg("info")) // TODO out_buffer
-.def("GetDecoderInfo", &BMediaDecoder::GetDecoderInfo, "", py::arg("out_info"))
+// FIXED (2026-10-26): beta6's GetDecoderInfo(media_codec_info *out_info)
+// (os/media/MediaDecoder.h:36) is an out-param API; the direct binding
+// exposed the raw C pointer (uncallable/corrupting from Python). Now:
+// internal buffer, tuple return (info dict, status).
+.def("GetDecoderInfo", [](const BMediaDecoder& self) -> py::tuple {
+    media_codec_info info;
+    std::memset(&info, 0, sizeof(info));
+    status_t st = self.GetDecoderInfo(&info);
+    if (st != B_OK) {
+        return py::make_tuple(py::none(), st);
+    }
+    py::dict d;
+    d["pretty_name"] = std::string(info.pretty_name);
+    d["short_name"] = std::string(info.short_name);
+    d["id"] = (int32)info.id;
+    d["sub_id"] = (int32)info.sub_id;
+    return py::make_tuple(d, st);
+}, "")
 ;
 
 py::class_<BMediaBufferDecoder, BMediaDecoder>(m, "BMediaBufferDecoder")
