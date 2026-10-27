@@ -87,7 +87,18 @@ PYBIND11_MODULE(MailAttachment, m)
 {
 py::class_<BMailAttachment, BMailComponent>(m, "BMailAttachment")
 .def("SetFileName", &BMailAttachment::SetFileName, "", py::arg("name"))
-.def("FileName", &BMailAttachment::FileName, "", py::arg("name"))
+// FIXED (2026-10-26): beta6's FileName(char* name) (os/mail/MailAttachment.h:19,
+// pure virtual, overridden by BSimple/BAttributedMailAttachment) WRITES the
+// name into the caller's buffer; the old char* binding handed pybind's
+// throwaway str copy (overflow + lost result). Now: internal buffer, tuple
+// return (name, status). Bound once here — inherited by the subclasses
+// (their direct FileName defs were removed).
+.def("FileName", [](BMailAttachment& self) -> std::tuple<std::string, status_t> {
+    char buffer[257];            // B_ENTRY_NAME_LENGTH + 1
+    buffer[0] = '\0';
+    status_t r = self.FileName(buffer);
+    return std::make_tuple(r == B_OK ? std::string(buffer) : std::string(), r);
+}, "")
 .def("SetTo", py::overload_cast<BFile *, bool>(&BMailAttachment::SetTo), "", py::arg("file"), py::arg("deleteFileWhenDone")=false)
 .def("SetTo", py::overload_cast<entry_ref *>(&BMailAttachment::SetTo), "", py::arg("ref"))
 .def("InitCheck", &BMailAttachment::InitCheck, "")
@@ -103,7 +114,7 @@ py::class_<BSimpleMailAttachment, PyBSimpleMailAttachment, BMailAttachment>(m, "
 .def("SetTo", py::overload_cast<entry_ref *>(&BSimpleMailAttachment::SetTo), "", py::arg("ref"))
 .def("InitCheck", &BSimpleMailAttachment::InitCheck, "")
 .def("SetFileName", &BSimpleMailAttachment::SetFileName, "", py::arg("name"))
-.def("FileName", &BSimpleMailAttachment::FileName, "", py::arg("name"))
+// FileName: see safe lambda on BMailAttachment above (inherited)
 .def("GetDecodedData", py::overload_cast<BPositionIO *>(&BSimpleMailAttachment::GetDecodedData), "", py::arg("data"))
 .def("SetDecodedData", py::overload_cast<BPositionIO *>(&BSimpleMailAttachment::SetDecodedData), "", py::arg("data"))
 .def("GetDecodedData", py::overload_cast<>(&BSimpleMailAttachment::GetDecodedData), "")
@@ -125,7 +136,7 @@ py::class_<BAttributedMailAttachment, PyBAttributedMailAttachment, BMailAttachme
 .def("SaveToDisk", &BAttributedMailAttachment::SaveToDisk, "", py::arg("entry"))
 .def("SetEncoding", &BAttributedMailAttachment::SetEncoding, "", py::arg("encoding"))
 .def("Encoding", &BAttributedMailAttachment::Encoding, "")
-.def("FileName", &BAttributedMailAttachment::FileName, "", py::arg("name"))
+// FileName: see safe lambda on BMailAttachment above (inherited)
 .def("SetFileName", &BAttributedMailAttachment::SetFileName, "", py::arg("name"))
 .def("GetDecodedData", &BAttributedMailAttachment::GetDecodedData, "", py::arg("data"))
 .def("SetDecodedData", &BAttributedMailAttachment::SetDecodedData, "", py::arg("data"))

@@ -63,7 +63,17 @@ py::class_<BEmailMessage, PyBEmailMessage, BMailContainer>(m, "BEmailMessage")
 .def("SetCC", &BEmailMessage::SetCC, "", py::arg("to"), py::arg("charset")=B_MAIL_NULL_CONVERSION, py::arg("encoding")=null_encoding)
 .def("SetBCC", &BEmailMessage::SetBCC, "", py::arg("to"))
 .def("SetPriority", &BEmailMessage::SetPriority, "", py::arg("to"))
-.def("GetName", py::overload_cast<char *, int32>(&BEmailMessage::GetName,py::const_), "", py::arg("name"), py::arg("maxLength"))
+// FIXED (2026-10-26): beta6's GetName(char* name, int32 maxLength)
+// (os/mail/MailMessage.h:84) WRITES into the caller buffer; the old
+// char* binding let pybind hand it a throwaway copy of a Python str
+// (overflow if maxLength > len(str)+1, result lost either way).
+// Now: internal buffer, tuple return (name, status).
+.def("GetName", [](const BEmailMessage& self)
+     -> std::tuple<std::string, status_t> {
+    char buffer[1024];
+    status_t r = self.GetName(buffer, sizeof(buffer) - 1);
+    return std::make_tuple(r == B_OK ? std::string(buffer) : std::string(), r);
+}, "")
 .def("GetName", py::overload_cast<BString *>(&BEmailMessage::GetName,py::const_), "", py::arg("name"))
 .def("SendViaAccountFrom", &BEmailMessage::SendViaAccountFrom, "", py::arg("message"))
 .def("SendViaAccount", py::overload_cast<const char *>(&BEmailMessage::SendViaAccount), "", py::arg("accountName"))
