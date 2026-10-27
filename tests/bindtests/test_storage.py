@@ -14,16 +14,18 @@ import sys
 import common
 
 Be = common.load(common.closure("Errors", "TypeConstants", "StorageDefs",
+                                "Handler", "Looper",
                                 "BNode", "BFile", "BEntry", "BPath",
                                 "BEntryList", "BQuery", "BVolume",
                                 "BDirectory", "BNodeInfo", "BAppFileInfo",
                                 "BPathFinder", "BSize", "stat", "MimeType",
-                                "BMimeType"))
+                                "BMimeType", "NodeMonitor"))
 from Be import (BNode, BFile, BEntry, BPath, BEntryList, BQuery, BVolume,
                 BDirectory, BNodeInfo, BAppFileInfo, BPathFinder, BSize,
-                BMimeType, entry_ref, B_OK, B_RAW_TYPE, B_INT32_TYPE,
-                B_INT64_TYPE, B_FLOAT_TYPE, B_DOUBLE_TYPE, B_CREATE_FILE,
-                B_READ_ONLY, B_READ_WRITE, B_GT, B_SIZE_UNSET, B_SIZE_UNLIMITED)
+                BMimeType, entry_ref, node_ref, BLooper, B_OK, B_RAW_TYPE,
+                B_INT32_TYPE, B_INT64_TYPE, B_FLOAT_TYPE, B_DOUBLE_TYPE,
+                B_CREATE_FILE, B_READ_ONLY, B_READ_WRITE, B_GT, B_WATCH_DIRECTORY,
+                B_SIZE_UNSET, B_SIZE_UNLIMITED, watch_node, stop_watching)
 
 P = common.scratch_file("storage_test.dat")
 
@@ -514,6 +516,21 @@ def t_size_unlimited():
     # STANDARD: B_SIZE_UNLIMITED is the C const 1024*1024*1024 (Size.h:14).
     assert B_SIZE_UNLIMITED == 1024 * 1024 * 1024, repr(B_SIZE_UNLIMITED)
 common.check("storage:Size.B_SIZE_UNLIMITED", t_size_unlimited)
+
+def t_watch_node_short_forms():
+    # Pairs the 2026-10-27 NodeMonitor.cpp fix: `py::arg("looper")=NULL`
+    # stored the default as int 0 -> the short handler forms were
+    # permanently uncallable. Now: watch_node(node, flags, handler) is
+    # 3-arg; stop_watching(handler) is 2-arg. Headless-safe (BLooper
+    # target, no app needed to register the watch).
+    s = os.stat(common.SCRATCH)
+    nref = node_ref(s.st_dev, s.st_ino)   # Node-module type (double-registered)
+    lp = BLooper()   # 0-arg form (2026-10-27 fix: NULL-default was uncallable)
+    st = watch_node(nref, B_WATCH_DIRECTORY, lp)      # short form
+    assert st == B_OK, "watch_node 3-arg = %d" % st
+    st = stop_watching(lp)                            # short form
+    assert st == B_OK, "stop_watching 2-arg = %d" % st
+common.check("storage:watch_node.short-forms", t_watch_node_short_forms)
 
 if os.path.exists(P):
     os.remove(P)
