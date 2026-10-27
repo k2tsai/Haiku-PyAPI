@@ -18,7 +18,14 @@ py::class_<BVolumeRoster>(m, "BVolumeRoster")
 .def("GetNextVolume", &BVolumeRoster::GetNextVolume, "", py::arg("volume"))
 .def("Rewind", &BVolumeRoster::Rewind, "")
 .def("GetBootVolume", &BVolumeRoster::GetBootVolume, "", py::arg("volume"))
-.def("StartWatching", &BVolumeRoster::StartWatching, "", py::arg("messenger")=be_app_messenger)
+// FIXED (2026-10-25): `py::arg("messenger")=be_app_messenger` made pybind11
+// convert the BMessenger default at REGISTRATION time — BMessenger is
+// registered by the Messenger module, which stock __init__ imports AFTER
+// VolumeRoster, so the full `import Be` crashed here ("type not registered
+// yet?"). No Python-side default: the no-arg overload lets the C++
+// be_app_messenger default apply at CALL time.
+.def("StartWatching", [](BVolumeRoster& self, BMessenger messenger) { return self.StartWatching(messenger); }, "", py::arg("messenger"))
+.def("StartWatching", [](BVolumeRoster& self) { return self.StartWatching(); }, "")
 .def("StopWatching", &BVolumeRoster::StopWatching, "")
 .def("Messenger", &BVolumeRoster::Messenger, "")
 ;

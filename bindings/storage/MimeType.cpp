@@ -138,15 +138,58 @@ py::class_<BMimeType>(m, "BMimeType")
 
             return std::make_tuple(result, py::array_t<uint8>({static_cast<ssize_t>(size)}, {sizeof(uint8)}, data, capsule));
 }, "")*/
-.def("GetPreferredApp", &BMimeType::GetPreferredApp, "", py::arg("signature"), py::arg("verb")=B_OPEN)
+// FIXED (2026-10-25): beta6 MimeType.h GetPreferredApp(char*, app_verb),
+// GetShortDescription(char*), GetLongDescription(char*) are char* out-params;
+// the raw bindings wrote into the caller's str buffer / null-derefd on None.
+// Internal-buffer lambdas, (status, value) shape (value None on error),
+// matching the BNodeInfo::GetType binding.
+.def("GetPreferredApp", [](const BMimeType& self, app_verb verb){
+	char signature[1024];
+	status_t status = self.GetPreferredApp(signature, verb);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(signature));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+}, "", py::arg("verb"))
+// no-arg form: the C++ B_OPEN default is applied in C++ — py::enum_
+// (non-arithmetic) rejects Python ints, so a `py::arg("verb")=B_OPEN`-style
+// default is unusable (registration-time import crash when app_verb is not
+// yet registered; call-time TypeError when it is an int).
+.def("GetPreferredApp", [](const BMimeType& self){
+	char signature[1024];
+	status_t status = self.GetPreferredApp(signature, B_OPEN);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(signature));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
 .def("GetAttrInfo", &BMimeType::GetAttrInfo, "", py::arg("info"))
 .def("GetFileExtensions", &BMimeType::GetFileExtensions, "", py::arg("extensions"))
-.def("GetShortDescription", &BMimeType::GetShortDescription, "", py::arg("description"))
-.def("GetLongDescription", &BMimeType::GetLongDescription, "", py::arg("description"))
+.def("GetShortDescription", [](const BMimeType& self){
+	char description[1024];
+	status_t status = self.GetShortDescription(description);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(description));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
+.def("GetLongDescription", [](const BMimeType& self){
+	char description[1024];
+	status_t status = self.GetLongDescription(description);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(description));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
 .def("GetSupportingApps", &BMimeType::GetSupportingApps, "", py::arg("signatures"))
 .def("SetIcon", py::overload_cast<const BBitmap *, icon_size>(&BMimeType::SetIcon), "", py::arg("icon"), py::arg("size"))
 .def("SetIcon", py::overload_cast<const uint8*, size_t>(&BMimeType::SetIcon), "", py::arg("data"), py::arg("size"))
-.def("SetPreferredApp", &BMimeType::SetPreferredApp, "", py::arg("signature"), py::arg("verb")=B_OPEN)
+.def("SetPreferredApp", &BMimeType::SetPreferredApp, "", py::arg("signature"), py::arg("verb"))
+.def("SetPreferredApp", [](BMimeType& self, const char* signature) { return self.SetPreferredApp(signature, B_OPEN); }, "", py::arg("signature"))
 .def("SetAttrInfo", &BMimeType::SetAttrInfo, "", py::arg("info"))
 .def("SetFileExtensions", &BMimeType::SetFileExtensions, "", py::arg("extensions"))
 .def("SetShortDescription", &BMimeType::SetShortDescription, "", py::arg("description"))

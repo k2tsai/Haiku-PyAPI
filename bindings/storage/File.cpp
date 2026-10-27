@@ -94,6 +94,11 @@ py::class_<BFile, BNode, BPositionIO>(m, "BFile")
 	status_t ret = self.GetSize(&size);
 	return py::make_tuple(ret,size);
 }, "")
+// FIXED (2026-10-25): beta6's BFile has NO Close() (os/storage/File.h) —
+// the handle is released by BNode::Unset() (Node.h:51, virtual close_fd()).
+// Close() is bound as an alias so Python code has the conventional name
+// (test_storage.py pins f.Close()).
+.def("Close", [](BFile& self) { self.Unset(); }, "")
 .def("__copy__", &BFile::operator=, "", py::arg("file"))
 ;
 

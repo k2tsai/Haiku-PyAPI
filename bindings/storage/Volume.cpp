@@ -14,7 +14,10 @@ using namespace BPrivate::Storage;
 using namespace BPrivate::Storage::Mime;
 //using namespace BPackageKit;
 
-py::tuple GetIcon_toArray(BVolume& self, size_t size, type_code type){
+// FIXED (2026-10-25): file-scope helper had external linkage -> link error
+// (non-visible symbol) in some builds (reported by the interface-kit agent).
+// Make it static so it stays private to this TU.
+static py::tuple GetIcon_toArray(BVolume& self, size_t size, type_code type){
             uint8_t* data;
             status_t result = self.GetIcon(&data, &size, &type);
             py::array_t<uint8_t> array = py::array_t<uint8_t>(
@@ -39,7 +42,14 @@ py::class_<BVolume>(m, "BVolume")
 .def("Capacity", &BVolume::Capacity, "")
 .def("FreeBytes", &BVolume::FreeBytes, "")
 .def("BlockSize", &BVolume::BlockSize, "")
-.def("GetName", &BVolume::GetName, "", py::arg("name"))
+// FIXED (2026-10-25): beta6 BVolume::GetName(char*) (Volume.h:40) is an
+// out-param; the raw binding wrote into the caller's str buffer / null-
+// derefd on None. No-arg form with an internal buffer -> (name, status).
+.def("GetName", [](BVolume& self)->py::tuple{
+	char name[B_FILE_NAME_LENGTH];
+	status_t status = self.GetName(name);
+	return py::make_tuple(status == B_OK ? std::string(name) : std::string(), status);
+},"")
 .def("SetName", &BVolume::SetName, "", py::arg("name"))
 .def("GetIcon", py::overload_cast<BBitmap *, icon_size>(&BVolume::GetIcon, py::const_), "", py::arg("icon"), py::arg("which"))
 //.def("GetIcon", py::overload_cast<unsigned char, size_t *, type_code *>(&BVolume::GetIcon, py::const_), "", py::arg("_data"), py::arg("_size"), py::arg("_type"))

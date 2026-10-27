@@ -5,6 +5,7 @@
 
 #include <AppFileInfo.h>
 #include <Bitmap.h>
+#include <StorageDefs.h>
 
 namespace py = pybind11;
 
@@ -101,13 +102,45 @@ py::class_<BAppFileInfo, BNodeInfo>(m, "BAppFileInfo")
 .def(py::init(), "")
 .def(py::init<BFile *>(), "", py::arg("file"))
 .def("SetTo", &BAppFileInfo::SetTo, "", py::arg("file"))
-.def("GetType", &BAppFileInfo::GetType, "", py::arg("type"))
+// FIXED (2026-10-25): beta6 AppFileInfo.h:57/60/63/66 — GetType(char*),
+// GetSignature(char*), GetCatalogEntry(char*), GetAppFlags(uint32*) are
+// out-params; the raw bindings null-deref on None. Internal-buffer lambdas,
+// (status, value) shape matching the base BNodeInfo::GetType binding.
+.def("GetType", [](BAppFileInfo& self){
+	char type[B_MIME_TYPE_LENGTH];
+	status_t status = self.GetType(type);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(type));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
 .def("SetType", &BAppFileInfo::SetType, "", py::arg("type"))
-.def("GetSignature", &BAppFileInfo::GetSignature, "", py::arg("signature"))
+.def("GetSignature", [](BAppFileInfo& self){
+	char signature[B_MIME_TYPE_LENGTH];
+	status_t status = self.GetSignature(signature);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(signature));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
 .def("SetSignature", &BAppFileInfo::SetSignature, "", py::arg("signature"))
-.def("GetCatalogEntry", &BAppFileInfo::GetCatalogEntry, "", py::arg("catalogEntry"))
+.def("GetCatalogEntry", [](BAppFileInfo& self){
+	char catalogEntry[B_MIME_TYPE_LENGTH];
+	status_t status = self.GetCatalogEntry(catalogEntry);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(catalogEntry));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
 .def("SetCatalogEntry", &BAppFileInfo::SetCatalogEntry, "", py::arg("catalogEntry"))
-.def("GetAppFlags", &BAppFileInfo::GetAppFlags, "", py::arg("flags"))
+.def("GetAppFlags", [](BAppFileInfo& self){
+	uint32 flags = 0;
+	status_t status = self.GetAppFlags(&flags);
+	return py::make_tuple(status, (int)flags);
+},"")
 .def("SetAppFlags", &BAppFileInfo::SetAppFlags, "", py::arg("flags"))
 .def("RemoveAppFlags", &BAppFileInfo::RemoveAppFlags, "")
 .def("GetSupportedTypes", &BAppFileInfo::GetSupportedTypes, "", py::arg("types"))

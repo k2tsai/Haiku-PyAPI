@@ -5,6 +5,7 @@
 #include <pybind11/chrono.h>
 
 #include <kernel/fs_attr.h>
+#include <storage/StorageDefs.h>
 #include <support/String.h>
 #include <support/TypeConstants.h>
 #include <Node.h>
@@ -38,6 +39,15 @@ py::class_<BNode>(m, "BNode") //Commented out BStatable verify if needed
 .def(py::init<const BDirectory *, const char *>(), "", py::arg("dir"), py::arg("path"))
 .def(py::init<const BNode &>(), "", py::arg("node"))
 .def("InitCheck", &BNode::InitCheck, "")
+// FIXED (2026-10-25): beta6 BNode::GetStat(struct stat*) (Node.h:49) is an
+// out-param; the raw binding null-derefs on None. No-arg form with an
+// internal stat buffer -> (stat, status); the stat object-arg form (safe
+// borrow) kept as an arity-distinguished overload.
+.def("GetStat", [](BNode& self)->py::tuple{
+	struct stat st = {};
+	status_t ret = self.GetStat(&st);
+	return py::make_tuple(st, ret);
+},"")
 .def("GetStat", &BNode::GetStat, "", py::arg("st"))
 .def("SetTo", py::overload_cast<const entry_ref *>(&BNode::SetTo), "", py::arg("ref"))
 .def("SetTo", py::overload_cast<const BEntry *>(&BNode::SetTo), "", py::arg("entry"))
@@ -215,10 +225,17 @@ py::class_<BNode>(m, "BNode") //Commented out BStatable verify if needed
 	}
 }, py::arg("attr"), py::arg("info")=attr_info())
 */
-.def("GetAttrInfo", [](BNode& self, const char* attr, struct attr_info* info){
-	status_t result = self.GetAttrInfo(attr, info);
-	return std::make_tuple(*info, result);
-}, py::arg("attr"), py::arg("info")=attr_info())
+// FIXED (2026-10-20): the old binding took `struct attr_info* info` as an
+// out-param defaulted to `attr_info()` — a struct value where a pointer is
+// expected. pybind11 had to cast that default at REGISTRATION time, so the
+// fs_attr module needed importing first or `import Node` failed; and the
+// default was unusable at call time (None would null-deref). Now: no
+// out-param, local buffer, tuple return (info, status).
+.def("GetAttrInfo", [](BNode& self, const char* attr) -> std::tuple<attr_info, status_t> {
+	attr_info info = {};
+	status_t result = self.GetAttrInfo(attr, &info);
+	return std::make_tuple(info, result);
+}, "", py::arg("attr"))
 //.def("GetNextAttrName", &BNode::GetNextAttrName, "",py::arg("buffer"))
 //.def("GetNextAttrName", py::overload_cast<char *>(&BNode::GetNextAttrName), "",py::arg("buffer"))
 /*.def("GetNextAttrName", [](BNode& self, char* buffer){
@@ -229,13 +246,32 @@ py::class_<BNode>(m, "BNode") //Commented out BStatable verify if needed
 		throw std::runtime_error("Errore durante la chiamata a GetNextAttrName");
 	}
 }, py::arg("buffer")="")//, py::return_value_policy::reference_internal*/
-.def("GetNextAttrName", [](BNode& self, char* buffer){
+// FIXED (2026-10-20): the old binding passed the caller's `char*` (a Python
+// str's internal buffer) to GetNextAttrName, which WRITES into it — heap
+// corruption. Now: internal buffer, tuple return (name, status).
+.def("GetNextAttrName", [](BNode& self) -> std::tuple<std::string, status_t> {
+	char buffer[B_ATTR_NAME_LENGTH];
 	status_t result = self.GetNextAttrName(buffer);
-	return std::make_tuple(std::string(buffer),result);
-}, py::arg("buffer")="")
+	return std::make_tuple(result == B_OK ? std::string(buffer) : std::string(), result);
+}, "")
 .def("RewindAttrs", &BNode::RewindAttrs, "")
-.def("WriteAttrString", &BNode::WriteAttrString, "", py::arg("name"), py::arg("data"))
-.def("ReadAttrString", &BNode::ReadAttrString, "", py::arg("name"), py::arg("result"))
+// FIXED (2026-10-20): beta6's WriteAttrString takes `const BString*`, so the
+// raw binding forced callers to construct a BString (String module) just to
+// pass a string. Now accepts a plain Python str.
+.def("WriteAttrString", [](BNode& self, const char* name, const std::string& data) {
+	BString s(data.c_str());
+	return self.WriteAttrString(name, &s);
+}, "", py::arg("name"), py::arg("data"))
+// FIXED (2026-10-20): beta6's BNode::ReadAttrString(name, BString* result) is
+// an out-param API; the old binding exposed `result` as an input arg (the char*
+// caster wrote into the caller's str buffer — corruption). Now: internal
+// BString, tuple return (string, status).
+.def("ReadAttrString", [](BNode& self, const char* name)
+     -> std::tuple<std::string, status_t> {
+	BString result;
+	status_t r = self.ReadAttrString(name, &result);
+	return std::make_tuple(r == B_OK ? std::string(result.String()) : std::string(), r);
+}, "", py::arg("name"))
 .def("__copy__", &BNode::operator=, "", py::arg("node"))
 .def("__eq__", &BNode::operator==, "", py::arg("node"))
 .def("__ne__", &BNode::operator!=, "", py::arg("node"))

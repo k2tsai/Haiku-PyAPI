@@ -44,13 +44,26 @@ PYBIND11_MODULE(PathFinder, m)
 //m.attr("BPackageResolvableExpression") = py::cast(BPackageResolvableExpression);
 
 py::class_<BPathFinder>(m, "BPathFinder")
-.def(py::init<const void *, const char *>(), "", py::arg("codePointer")=NULL, py::arg("dependency")=NULL)
-.def(py::init<const char *, const char *>(), "", py::arg("path"), py::arg("dependency")=NULL)
-.def(py::init<const entry_ref &, const char *>(), "", py::arg("ref"), py::arg("dependency")=NULL)
+// FIXED (2026-10-25): `py::arg("dependency")=NULL` (const char* default)
+// broke the common short forms — BPathFinder(path), pf.SetTo(path): the
+// nullptr default is stored as int 0, which the const char* caster rejects
+// -> TypeError. Split into short forms (C++ defaults fill dependency) and
+// full forms. Same fix as Path.cpp.
+.def(py::init<>(), "")
+.def(py::init<const void *>(), "", py::arg("codePointer"))
+.def(py::init<const void *, const char *>(), "", py::arg("codePointer"), py::arg("dependency"))
+.def(py::init<const char *>(), "", py::arg("path"))
+.def(py::init<const char *, const char *>(), "", py::arg("path"), py::arg("dependency"))
+.def(py::init<const entry_ref &>(), "", py::arg("ref"))
+.def(py::init<const entry_ref &, const char *>(), "", py::arg("ref"), py::arg("dependency"))
 //.def(py::init<const BPackageKit::BPackageResolvableExpression &, const char *>(), "", py::arg("expression"), py::arg("dependency")=NULL) //BResolvableExpression
-.def("SetTo", py::overload_cast<const void *, const char *>(&BPathFinder::SetTo), "", py::arg("codePointer")=NULL, py::arg("dependency")=NULL)
-.def("SetTo", py::overload_cast<const char *, const char *>(&BPathFinder::SetTo), "", py::arg("path"), py::arg("dependency")=NULL)
-.def("SetTo", py::overload_cast<const entry_ref &, const char *>(&BPathFinder::SetTo), "", py::arg("ref"), py::arg("dependency")=NULL)
+.def("SetTo", [](BPathFinder& self) { return self.SetTo((const void*)NULL); }, "")
+.def("SetTo", [](BPathFinder& self, const void* codePointer) { return self.SetTo(codePointer); }, "", py::arg("codePointer"))
+.def("SetTo", [](BPathFinder& self, const void* codePointer, const char* dependency) { return self.SetTo(codePointer, dependency); }, "", py::arg("codePointer"), py::arg("dependency"))
+.def("SetTo", [](BPathFinder& self, const char* path) { return self.SetTo(path); }, "", py::arg("path"))
+.def("SetTo", [](BPathFinder& self, const char* path, const char* dependency) { return self.SetTo(path, dependency); }, "", py::arg("path"), py::arg("dependency"))
+.def("SetTo", [](BPathFinder& self, const entry_ref& ref) { return self.SetTo(ref); }, "", py::arg("ref"))
+.def("SetTo", [](BPathFinder& self, const entry_ref& ref, const char* dependency) { return self.SetTo(ref, dependency); }, "", py::arg("ref"), py::arg("dependency"))
 //.def("SetTo", py::overload_cast<const BPackageKit::BPackageResolvableExpression &, const char *>(&BPathFinder::SetTo), "", py::arg("expression"), py::arg("dependency")=NULL) //BResolvableExpression
 .def("FindPath", [](BPathFinder& self,const char * architecture,path_base_directory baseDirectory,const char * subPath,unsigned int flags) {
     BPath  _path;

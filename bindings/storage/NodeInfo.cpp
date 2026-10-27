@@ -71,6 +71,14 @@ py::class_<BNodeInfo>(m, "BNodeInfo")
 }, "")*/
 .def("SetIcon", py::overload_cast<const uint8*, size_t>(&BNodeInfo::SetIcon), "", py::arg("data"), py::arg("size"))
 //.def("GetPreferredApp", &BNodeInfo::GetPreferredApp, "", py::arg("signature"), py::arg("verb")=B_OPEN)
+// FIXED (2026-10-25): the original `py::arg("verb")=B_OPEN` default made
+// pybind11 convert the app_verb enum at REGISTRATION time — app_verb is
+// registered by the MimeType module, which stock __init__ imports AFTER
+// NodeInfo, so both `import Be` (full) and solo NodeInfo without MimeType
+// died with "arg(): could not convert default argument 'verb: app_verb'".
+// No Python-side default: a no-arg overload applies B_OPEN in C++ (py::enum_
+// is non-arithmetic — it rejects Python ints, so int defaults fail at call
+// time as well).
 .def("GetPreferredApp", [](BNodeInfo& self,app_verb verb){
 	char signature[B_MIME_TYPE_LENGTH];
 	status_t status = self.GetPreferredApp(signature,verb);
@@ -79,8 +87,27 @@ py::class_<BNodeInfo>(m, "BNodeInfo")
     } else {
         return py::make_tuple(status, py::none());
     }
-}, "", py::arg("verb")=B_OPEN)
-.def("SetPreferredApp", &BNodeInfo::SetPreferredApp, "", py::arg("signature"), py::arg("verb")=B_OPEN)
+}, "", py::arg("verb"))
+.def("GetPreferredApp", [](BNodeInfo& self){
+	char signature[B_MIME_TYPE_LENGTH];
+	status_t status = self.GetPreferredApp(signature,B_OPEN);
+	if (status == B_OK) {
+        return py::make_tuple(status, std::string(signature));
+    } else {
+        return py::make_tuple(status, py::none());
+    }
+},"")
+.def("SetPreferredApp", &BNodeInfo::SetPreferredApp, "", py::arg("signature"), py::arg("verb"))
+.def("SetPreferredApp", [](BNodeInfo& self, const char* signature) { return self.SetPreferredApp(signature, B_OPEN); }, "", py::arg("signature"))
+// FIXED (2026-10-25): beta6 BNodeInfo::GetAppHint(entry_ref*) (NodeInfo.h:45)
+// is an out-param; the raw binding null-derefs on None. No-arg form with an
+// internal entry_ref -> (ref, status); the object-arg form (safe borrow) kept.
+// (GetType/GetPreferredApp were already rebound to internal-buffer lambdas.)
+.def("GetAppHint", [](BNodeInfo& self)->py::tuple{
+	entry_ref ref;
+	status_t ret = self.GetAppHint(&ref);
+	return py::make_tuple(ref, ret);
+},"")
 .def("GetAppHint", &BNodeInfo::GetAppHint, "", py::arg("ref"))
 .def("SetAppHint", &BNodeInfo::SetAppHint, "", py::arg("ref"))
 .def("GetTrackerIcon", py::overload_cast<BBitmap *, icon_size>(&BNodeInfo::GetTrackerIcon, py::const_), "", py::arg("icon"), py::arg("which")=B_LARGE_ICON)// TODO
