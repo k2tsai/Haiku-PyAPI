@@ -13,7 +13,14 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(Clipboard,m)
 {
-m.attr("B_CLIPBOARD_CHANGED") = "CLCH";
+// FIXED (2026-10-26): was bound as the Python string "CLCH". C has an int
+// 4cc (os/app/Clipboard.h:20 `B_CLIPBOARD_CHANGED = 'CLCH'`) — message
+// `what` codes must compare equal to ints or `what == B_CLIPBOARD_CHANGED`
+// never matches. Note: explicit (int) cast is REQUIRED — assigning the
+// enum-typed constant directly fails module initialization in this
+// pybind11 build (unregistered-enum cast returns an empty handle; see
+// test_appmedia.py row appmedia:enum-attr-shape for the pin).
+m.attr("B_CLIPBOARD_CHANGED") = (int)B_CLIPBOARD_CHANGED;
 
 py::class_<BClipboard>(m, "BClipboard", R"doc(
 Used for short-term data storage between documents and applications 

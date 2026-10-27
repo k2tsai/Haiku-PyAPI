@@ -151,7 +151,13 @@ have to ``Lock()`` the object first.
    :param portCapacity: The maximum port capacity, the default is ``B_LOOPER_PORT_DEFAULT_CAPACITY`` (200)
    :type portCapacity: int
    
-)doc", py::arg("name")=NULL, py::arg("priority")=B_NORMAL_PRIORITY, py::arg("portCapacity")=B_LOOPER_PORT_DEFAULT_CAPACITY)
+)doc", py::arg("name"), py::arg("priority")=B_NORMAL_PRIORITY, py::arg("portCapacity")=B_LOOPER_PORT_DEFAULT_CAPACITY)
+// FIXED (2026-10-27): the original `py::arg("name")=NULL` stored the
+// nullptr default as int 0, which the str caster rejects ("name: str = 0")
+// -> BLooper() was permanently uncallable (the NULL-default defect class,
+// see Path.cpp/NodeMonitor.cpp). 0-arg form: C++ BLooper() applies the
+// defaults (Python subclasses still get the trampoline via init_alias).
+.def(py::init([]() -> BLooper* { return new BLooper(); }), "")
 .def(py::init_alias<BMessage *>(), R"doc(
    Construct a looper from an archived message.
 

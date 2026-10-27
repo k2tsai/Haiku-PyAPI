@@ -597,30 +597,90 @@ This performs the same deep copy as the copy constructor.
    :return: Number of bytes needed to store the flattened form.
    :rtype: int
 )doc")
-// TODO CHECK if this below works properly
-.def("Flatten", py::overload_cast<char *, ssize_t>(&BMessage::Flatten, py::const_), R"doc(
-   Flatten the message into a preallocated buffer.
-   
-:param buffer: The buffer where the flattened data will be stored.
+// FIXED (2026-10-26): the old `Flatten(char*, ssize_t)` binding let pybind
+// convert the `char*` from a Python str's copy — Flatten() wrote into that
+// throwaway buffer, so the result was silently lost (and the buffer could be
+// shorter than the flat message). Now: a safe no-arg form returning
+// (status, bytes), plus a py::buffer overload that writes into a real
+// writable Python buffer.
+.def("Flatten", [](const BMessage& self) -> std::tuple<status_t, py::object> {
+    ssize_t size = self.FlattenedSize();
+    if (size < 0) {
+        return std::make_tuple((status_t)size, py::none());
+    }
+    std::string buf(size, '\0');
+    status_t st = self.Flatten(&buf[0], size);
+    if (st != B_OK) {
+        return std::make_tuple(st, py::none());
+    }
+    return std::make_tuple(st, py::bytes(buf));
+}, R"doc(
+   Flatten the message into a new bytes object.
+
+Safe form of the C++ out-buffer API: allocates the buffer internally
+(``FlattenedSize()`` bytes) and returns it.
+
+:return: A tuple ``(status, data)`` where ``data`` is the flattened
+    message as ``bytes`` (``None`` on failure).
+:rtype: (int, bytes)
+)doc")
+.def("Flatten", [](const BMessage& self, py::buffer buf, ssize_t size) -> status_t {
+    py::buffer_info info = buf.request();
+    if (info.readonly) {
+        throw std::runtime_error("Flatten: buffer is not writable");
+    }
+    if (size < 0 || size > info.size) {
+        throw std::runtime_error("Flatten: size exceeds buffer length");
+    }
+    return self.Flatten((char*)info.ptr, size);
+}, R"doc(
+   Flatten the message into a preallocated writable buffer.
+
+:param buffer: A writable buffer object (e.g. ``bytearray``) that will
+    receive the flattened data.
 :type buffer: bytearray or writable buffer
-:param size: Size of the buffer in bytes.
+:param size: Size of the buffer in bytes (must not exceed the buffer length).
 :type size: int
-:return: ``B_OK`` on success, or an error code.
+:return: ``B_OK`` on success, or an error code (e.g. ``B_BUFFER_OVERFLOW``
+    if the buffer is too small).
 :rtype: int
 )doc", py::arg("buffer"), py::arg("size"))
-.def("Flatten", py::overload_cast<BDataIO *, ssize_t *>(&BMessage::Flatten, py::const_), R"doc(
+// FIXED (2026-10-26): beta6's `Flatten(BDataIO*, ssize_t* size = NULL)` has
+// an out-param `ssize_t*`; in this pybind11 build arithmetic pointer args
+// route through the int caster (intrinsic_t strips the pointer), so the
+// value C writes lands in caster-local storage and is SILENTLY LOST to the
+// Python caller. Now: internal size variable, tuple return (status, size).
+.def("Flatten", [](const BMessage& self, BDataIO* stream) -> std::tuple<status_t, ssize_t> {
+    ssize_t size = 0;
+    status_t st = self.Flatten(stream, &size);
+    return std::make_tuple(st, st == B_OK ? size : 0);
+}, R"doc(
    Flatten the message and write it into a ``BDataIO`` stream.
 
 :param stream: The output stream.
 :type stream: BDataIO
-:param size: Optional variable that will store the number of bytes written, or ``None``
-:type size: int, optional
+:return: A tuple ``(status, size)`` where ``size`` is the number of bytes
+    written (0 on failure).
+:rtype: (int, int)
+)doc", py::arg("stream"))
+
+
+// FIXED (2026-10-26): explicit bytes overload for Unflatten — the flat form
+// is binary (NUL bytes are legal), so it must not be routed through a
+// C-string caster. Registered last, so bytes dispatches here.
+.def("Unflatten", [](BMessage& self, const py::bytes& data) -> status_t {
+    return self.Unflatten(PyBytes_AsString(data.ptr()));
+}, R"doc(
+   Restore the contents of the message from a flattened ``bytes`` object.
+
+Safe form: accepts arbitrary binary data (NUL bytes included), as produced
+by ``Flatten()``.
+
+:param flatBuffer: The bytes containing the flattened message.
+:type flatBuffer: bytes
 :return: ``B_OK`` on success, or an error code.
 :rtype: int
-)doc", py::arg("stream"), py::arg("size")=NULL)
-
-
-// ### TODO: CHECK if this returns py::capsule and we should wrap this ####
+)doc", py::arg("flatBuffer"))
 .def("Unflatten", py::overload_cast<const char *>(&BMessage::Unflatten), R"doc(
    Restore the contents of the message from a flattened buffer.
 
