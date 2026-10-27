@@ -118,7 +118,14 @@ py::class_<BCheckBox, PyBCheckBox, BControl, std::unique_ptr<BCheckBox, py::node
 .def("MouseDown", &BCheckBox::MouseDown, "", py::arg("where"))
 .def("MouseUp", &BCheckBox::MouseUp, "", py::arg("where"))
 .def("MouseMoved", &BCheckBox::MouseMoved, "", py::arg("where"), py::arg("code"), py::arg("dragMessage"))
-.def("GetPreferredSize", &BCheckBox::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BCheckBox& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BCheckBox::ResizeToPreferred, "")
 .def("MinSize", &BCheckBox::MinSize, "")
 .def("MaxSize", &BCheckBox::MaxSize, "")

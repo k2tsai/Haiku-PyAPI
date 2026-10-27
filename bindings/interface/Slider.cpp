@@ -233,7 +233,13 @@ py::class_<BSlider, PyBSlider, BControl, std::unique_ptr<BSlider, py::nodelete>>
 .def("SetPosition", &BSlider::SetPosition, "", py::arg(""))
 .def("Position", &BSlider::Position, "")
 .def("SetEnabled", &BSlider::SetEnabled, "", py::arg("on"))
-.def("GetLimits", &BSlider::GetLimits, "", py::arg("minimum"), py::arg("maximum"))
+// FIXED (2026-10-25): int32* out-params; now (minimum, maximum) tuple.
+.def("GetLimits", [](const BSlider& self) -> std::tuple<int32, int32> {
+	int32 minimum = 0;
+	int32 maximum = 0;
+	self.GetLimits(&minimum, &maximum);
+	return std::make_tuple(minimum, maximum);
+}, "")
 .def("Draw", &BSlider::Draw, "", py::arg("updateRect"))
 .def("DrawSlider", &BSlider::DrawSlider, "")
 .def("DrawBar", &BSlider::DrawBar, "")
@@ -248,7 +254,14 @@ py::class_<BSlider, PyBSlider, BControl, std::unique_ptr<BSlider, py::nodelete>>
 .def("ThumbFrame", &BSlider::ThumbFrame, "")
 .def("SetFlags", &BSlider::SetFlags, "", py::arg("flags"))
 .def("SetResizingMode", &BSlider::SetResizingMode, "", py::arg("mode"))
-.def("GetPreferredSize", &BSlider::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BSlider& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BSlider::ResizeToPreferred, "")
 .def("Invoke", &BSlider::Invoke, "", py::arg("message")=NULL)
 .def("ResolveSpecifier", &BSlider::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("form"), py::arg("property"))
@@ -268,7 +281,12 @@ py::class_<BSlider, PyBSlider, BControl, std::unique_ptr<BSlider, py::nodelete>>
 .def("SetBarColor", &BSlider::SetBarColor, "", py::arg("color"))
 .def("BarColor", &BSlider::BarColor, "")
 .def("UseFillColor", &BSlider::UseFillColor, "", py::arg("useFill"), py::arg("color")=NULL)
-.def("FillColor", &BSlider::FillColor, "", py::arg("color"))
+// FIXED (2026-10-25): rgb_color* out-param; now (color, useFill) tuple.
+.def("FillColor", [](const BSlider& self) -> std::tuple<rgb_color, bool> {
+	rgb_color color;
+	bool useFill = self.FillColor(&color);
+	return std::make_tuple(color, useFill);
+}, "")
 .def("OffscreenView", &BSlider::OffscreenView, "")
 .def("Orientation", &BSlider::Orientation, "")
 .def("SetOrientation", &BSlider::SetOrientation, "", py::arg(""))

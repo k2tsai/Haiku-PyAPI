@@ -64,7 +64,10 @@ py::enum_<font_direction>(m, "font_direction", "")
 m.attr("B_DISABLE_ANTIALIASING") = 1;
 m.attr("B_FORCE_ANTIALIASING") = 2;
 
-m.attr("B_NO_TRUNCATION") = "~0U";
+// beta6: Font.h truncation-mode enum, B_NO_TRUNCATION = ~0U.
+// (int literal: this pybind11 3.0 build breaks `m.attr(X) = <enum const>`
+// with an AttributeError at module init — see B_ALL_BORDERS' py::int_ wrap.)
+m.attr("B_NO_TRUNCATION") = 0xFFFFFFFF;
 m.attr("B_TRUNCATE_END") = 0;
 m.attr("B_TRUNCATE_BEGINNING") = 1;
 m.attr("B_TRUNCATE_MIDDLE") = 2;
@@ -226,8 +229,20 @@ py::class_<BFont>(m, "BFont")
 .def("IncludesBlock", &BFont::IncludesBlock, "", py::arg("start"), py::arg("end"))
 .def("FileFormat", &BFont::FileFormat, "")
 .def("CountTuned", &BFont::CountTuned, "")
-.def("GetTunedInfo", &BFont::GetTunedInfo, "", py::arg("index"), py::arg("info"))
-.def("TruncateString", &BFont::TruncateString, "", py::arg("inOut"), py::arg("mode"), py::arg("width"))
+// FIXED (2026-10-25): tuned_font_info* out-param; now internal buffer,
+// returns the info (Font.h GetTunedInfo).
+.def("GetTunedInfo", [](const BFont& self, int32 index) -> tuned_font_info {
+	tuned_font_info info = {};
+	self.GetTunedInfo(index, &info);
+	return info;
+}, "", py::arg("index"))
+// FIXED (2026-10-25): beta6 TruncateString(BString* inOut, ...) mutates the
+// caller's string (in/out); now takes/returns a plain Python str.
+.def("TruncateString", [](const BFont& self, std::string inOut, uint32 mode, float width) -> std::string {
+	BString s(inOut.c_str());
+	self.TruncateString(&s, mode, width);
+	return std::string(s.String());
+}, "", py::arg("inOut"), py::arg("mode"), py::arg("width"))
 //.def("GetTruncatedStrings", py::overload_cast<const char *, int, unsigned int, float, BString>(&BFont::GetTruncatedStrings, py::const_), "", py::arg("stringArray"), py::arg("numStrings"), py::arg("mode"), py::arg("width"), py::arg("resultArray"))
 .def("GetTruncatedStrings", [](BFont& self, std::vector<const char *> stringArray, uint32 mode,float width)->std::vector<BString>{
 	//BString resArray[stringArray.size()];
@@ -266,10 +281,31 @@ py::class_<BFont>(m, "BFont")
 .def("GetEscapements", py::overload_cast<const char, int, escapement_delta *, BPoint>(&BFont::GetEscapements,py::const_), "", py::arg("charArray"), py::arg("numChars"), py::arg("delta"), py::arg("escapementArray"))
 .def("GetEscapements", py::overload_cast<const char, int, escapement_delta *, BPoint, BPoint>(&BFont::GetEscapements,py::const_), "", py::arg("charArray"), py::arg("numChars"), py::arg("delta"), py::arg("escapementArray"), py::arg("offsetArray"))
 */
-.def("GetEdges", &BFont::GetEdges, "", py::arg("charArray"), py::arg("numBytes"), py::arg("edgeArray"))
-.def("GetHeight", &BFont::GetHeight, "", py::arg("height"))
-.def("GetBoundingBoxesAsGlyphs", &BFont::GetBoundingBoxesAsGlyphs, "", py::arg("charArray"), py::arg("numChars"), py::arg("mode"), py::arg("boundingBoxArray"))
-.def("GetBoundingBoxesAsString", &BFont::GetBoundingBoxesAsString, "", py::arg("charArray"), py::arg("numChars"), py::arg("mode"), py::arg("delta"), py::arg("boundingBoxArray"))
+// FIXED (2026-10-25): out-ARRAY params (edge_info[]/BRect[]/escapement_delta*)
+// — the raw bindings passed a single Python object's address and the API
+// wrote numBytes elements past it (heap corruption). Now internal buffers,
+// list/tuple returns (Font.h GetEdges/GetHeight/GetBoundingBoxes*).
+.def("GetEdges", [](const BFont& self, const char* charArray, int32 numBytes) -> std::vector<edge_info> {
+	std::vector<edge_info> edgeArray(numBytes);
+	self.GetEdges(charArray, numBytes, edgeArray.data());
+	return edgeArray;
+}, "", py::arg("charArray"), py::arg("numBytes"))
+.def("GetHeight", [](const BFont& self) -> font_height {
+	font_height height;
+	self.GetHeight(&height);
+	return height;
+}, "")
+.def("GetBoundingBoxesAsGlyphs", [](const BFont& self, const char* charArray, int32 numChars, font_metric_mode mode) -> std::vector<BRect> {
+	std::vector<BRect> boundingBoxArray(numChars);
+	self.GetBoundingBoxesAsGlyphs(charArray, numChars, mode, boundingBoxArray.data());
+	return boundingBoxArray;
+}, "", py::arg("charArray"), py::arg("numChars"), py::arg("mode"))
+.def("GetBoundingBoxesAsString", [](const BFont& self, const char* charArray, int32 numChars, font_metric_mode mode) -> std::tuple<std::vector<BRect>, escapement_delta> {
+	std::vector<BRect> boundingBoxArray(numChars);
+	escapement_delta delta;
+	self.GetBoundingBoxesAsString(charArray, numChars, mode, &delta, boundingBoxArray.data());
+	return std::make_tuple(boundingBoxArray, delta);
+}, "", py::arg("charArray"), py::arg("numChars"), py::arg("mode"))
 //.def("GetBoundingBoxesForStrings", &BFont::GetBoundingBoxesForStrings, "", py::arg("stringArray"), py::arg("numStrings"), py::arg("mode"), py::arg("deltas"), py::arg("boundingBoxArray"))
 // TODO TEST THIS, it returns empty boundingBox array COMPILES BUT DON'T WORK
 /*.def("GetBoundingBoxesForStrings", [](const BFont &self, const std::vector<std::string> &stringArray,

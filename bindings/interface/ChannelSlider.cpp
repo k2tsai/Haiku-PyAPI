@@ -131,7 +131,14 @@ py::class_<BChannelSlider, BChannelControl>(m, "BChannelSlider")
 .def("FrameResized", &BChannelSlider::FrameResized, "", py::arg("width"), py::arg("height"))
 .def("SetFont", &BChannelSlider::SetFont, "", py::arg("font"), py::arg("mask")=B_FONT_ALL)
 .def("MakeFocus", &BChannelSlider::MakeFocus, "", py::arg("focusState")=true)
-.def("GetPreferredSize", &BChannelSlider::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BChannelSlider& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResolveSpecifier", &BChannelSlider::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("form"), py::arg("property"))
 .def("GetSupportedSuites", &BChannelSlider::GetSupportedSuites, "", py::arg("data"))
 .def("SetEnabled", &BChannelSlider::SetEnabled, "", py::arg("on"))

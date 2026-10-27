@@ -262,8 +262,22 @@ py::class_<BTextView, PyBTextView, BView, std::unique_ptr<BTextView,py::nodelete
 .def("SetFontAndColor", py::overload_cast<const BFont *, uint32, const rgb_color *>(&BTextView::SetFontAndColor), "", py::arg("font"), py::arg("mode")=B_FONT_ALL, py::arg("color")=NULL)
 //.def("SetFontAndColor", static_cast<void (BTextView::*)(int32, int32, const BFont *, uint32, const rgb_color *)>(&BTextView::SetFontAndColor), "", py::arg("startOffset"), py::arg("endOffset"), py::arg("font"), py::arg("mode")=B_FONT_ALL, py::arg("color")=NULL)
 .def("SetFontAndColor", py::overload_cast<int32, int32, const BFont *, uint32, const rgb_color *>(&BTextView::SetFontAndColor), "", py::arg("startOffset"), py::arg("endOffset"), py::arg("font"), py::arg("mode")=B_FONT_ALL, py::arg("color")=NULL)
-.def("GetFontAndColor", py::overload_cast<int32, BFont *, rgb_color *>(&BTextView::GetFontAndColor,py::const_), "", py::arg("offset"), py::arg("_font"), py::arg("_color")=NULL)
-.def("GetFontAndColor", py::overload_cast<BFont *, uint32 *, rgb_color *, bool *>(&BTextView::GetFontAndColor,py::const_), "", py::arg("_font"), py::arg("_mode"), py::arg("_color")=NULL, py::arg("_sameColor")=NULL)
+// FIXED (2026-10-25): BFont*/rgb_color*/uint32*/bool* out-params; now
+// internal buffers, tuple returns (TextView.h GetFontAndColor).
+.def("GetFontAndColor", [](const BTextView& self, int32 offset) -> std::tuple<BFont, rgb_color> {
+	BFont font;
+	rgb_color color;
+	self.GetFontAndColor(offset, &font, &color);
+	return std::make_tuple(font, color);
+}, "", py::arg("offset"))
+.def("GetFontAndColor", [](const BTextView& self) -> std::tuple<BFont, uint32, rgb_color, bool> {
+	BFont font;
+	uint32 mode = 0;
+	rgb_color color;
+	bool sameColor = false;
+	self.GetFontAndColor(&font, &mode, &color, &sameColor);
+	return std::make_tuple(font, mode, color, sameColor);
+}, "")
 .def("SetRunArray", &BTextView::SetRunArray, "", py::arg("startOffset"), py::arg("endOffset"), py::arg("runs"))
 .def("SetRunArray", [](BTextView& self, int32 startOffset, int32 endOffset, const py::list& runs) {
 	if (!runs.is_none()) {
@@ -277,7 +291,21 @@ py::class_<BTextView, PyBTextView, BView, std::unique_ptr<BTextView,py::nodelete
 		BTextView::FreeRunArray(tra);
 	}
 },"",py::arg("startOffset"),py::arg("endOffset"),py::arg("runs"))
-.def("RunArray", &BTextView::RunArray, "", py::arg("startOffset"), py::arg("endOffset"), py::arg("_size")=NULL)
+// FIXED (2026-10-25): RunArray allocates a text_run_array the caller must
+// free; the raw binding returned an unregistered pointer (unusable, leaked)
+// and took an int32* _size out-param. beta6 text_run is {offset, font,
+// color} (TextView.h:21-25, no length field — classic's was removed).
+// Now returns a list of (offset, font, color) and frees the array.
+.def("RunArray", [](const BTextView& self, int32 startOffset, int32 endOffset) -> std::vector<std::tuple<int32, BFont, rgb_color>> {
+	std::vector<std::tuple<int32, BFont, rgb_color>> runs;
+	text_run_array* arr = self.RunArray(startOffset, endOffset);
+	if (arr) {
+		for (int32 i = 0; i < arr->count; i++)
+			runs.emplace_back(arr->runs[i].offset, arr->runs[i].font, arr->runs[i].color);
+		BTextView::FreeRunArray(arr);
+	}
+	return runs;
+}, "", py::arg("startOffset"), py::arg("endOffset"))
 .def("LineAt", py::overload_cast<int32>(&BTextView::LineAt,py::const_), "", py::arg("offset"))
 .def("LineAt", py::overload_cast<BPoint>(&BTextView::LineAt,py::const_), "", py::arg("point"))
 //.def("PointAt", &BTextView::PointAt, "", py::arg("offset"), py::arg("_height")=NULL)
@@ -299,14 +327,28 @@ py::class_<BTextView, PyBTextView, BView, std::unique_ptr<BTextView,py::nodelete
 .def("LineWidth", &BTextView::LineWidth, "", py::arg("lineNumber")=0)
 .def("LineHeight", &BTextView::LineHeight, "", py::arg("lineNumber")=0)
 .def("TextHeight", &BTextView::TextHeight, "", py::arg("startLine"), py::arg("endLine"))
-.def("GetTextRegion", &BTextView::GetTextRegion, "", py::arg("startOffset"), py::arg("endOffset"), py::arg("outRegion"))
+// FIXED (2026-10-25): BRegion* out-param; now constructs internally and
+// returns the region.
+.def("GetTextRegion", [](const BTextView& self, int32 startOffset, int32 endOffset) -> BRegion {
+	BRegion region;
+	self.GetTextRegion(startOffset, endOffset, &region);
+	return region;
+}, "", py::arg("startOffset"), py::arg("endOffset"))
 .def("ScrollToOffset", &BTextView::ScrollToOffset, "", py::arg("offset"))
 .def("ScrollToSelection", &BTextView::ScrollToSelection, "")
 .def("Highlight", &BTextView::Highlight, "", py::arg("startOffset"), py::arg("endOffset"))
 .def("SetTextRect", &BTextView::SetTextRect, "", py::arg("rect"))
 .def("TextRect", &BTextView::TextRect, "")
 .def("SetInsets", &BTextView::SetInsets, "", py::arg("left"), py::arg("top"), py::arg("right"), py::arg("bottom"))
-.def("GetInsets", &BTextView::GetInsets, "", py::arg("_left"), py::arg("_top"), py::arg("_right"), py::arg("_bottom"))
+// FIXED (2026-10-25): float* out-params; now (left, top, right, bottom).
+.def("GetInsets", [](const BTextView& self) -> std::tuple<float, float, float, float> {
+	float left = 0;
+	float top = 0;
+	float right = 0;
+	float bottom = 0;
+	self.GetInsets(&left, &top, &right, &bottom);
+	return std::make_tuple(left, top, right, bottom);
+}, "")
 .def("SetStylable", &BTextView::SetStylable, "", py::arg("stylable"))
 .def("IsStylable", &BTextView::IsStylable, "")
 .def("SetTabWidth", &BTextView::SetTabWidth, "", py::arg("width"))
@@ -334,7 +376,14 @@ py::class_<BTextView, PyBTextView, BView, std::unique_ptr<BTextView,py::nodelete
 .def("HideTyping", &BTextView::HideTyping, "", py::arg("enabled"))
 .def("IsTypingHidden", &BTextView::IsTypingHidden, "")
 .def("ResizeToPreferred", &BTextView::ResizeToPreferred, "")
-.def("GetPreferredSize", &BTextView::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BTextView& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("AllAttached", &BTextView::AllAttached, "")
 .def("AllDetached", &BTextView::AllDetached, "")
 .def_static("AllocRunArray", &BTextView::AllocRunArray, "", py::arg("entryCount"), py::arg("outSize")=NULL)
@@ -343,12 +392,25 @@ py::class_<BTextView, PyBTextView, BView, std::unique_ptr<BTextView,py::nodelete
 .def_static("FlattenRunArray", &BTextView::FlattenRunArray, "", py::arg("runArray"), py::arg("_size")=NULL)// return py::bytes or py::buffer?
 .def_static("UnflattenRunArray", &BTextView::UnflattenRunArray, "", py::arg("data"), py::arg("_size")=NULL)// data should be py::bytes or py::buffer?
 .def("Undo", &BTextView::Undo, "", py::arg("clipboard"))
-.def("UndoState", &BTextView::UndoState, "", py::arg("isRedo"))
+// FIXED (2026-10-25): bool* isRedo out-param (mandatory); now (state, isRedo).
+.def("UndoState", [](const BTextView& self) -> std::tuple<undo_state, bool> {
+	bool isRedo = false;
+	undo_state state = self.UndoState(&isRedo);
+	return std::make_tuple(state, isRedo);
+}, "")
 .def("MinSize", &BTextView::MinSize, "")
 .def("MaxSize", &BTextView::MaxSize, "")
 .def("PreferredSize", &BTextView::PreferredSize, "")
 .def("HasHeightForWidth", &BTextView::HasHeightForWidth, "")
-.def("GetHeightForWidth", &BTextView::GetHeightForWidth, "", py::arg("width"), py::arg("min"), py::arg("max"), py::arg("preferred"))
+// FIXED (2026-10-25): float* out-params (NULL-deref from Python); now a
+// (min, max, preferred) tuple.
+.def("GetHeightForWidth", [](BTextView& self, float width) -> std::tuple<float, float, float> {
+	float min = 0;
+	float max = 0;
+	float preferred = 0;
+	self.GetHeightForWidth(width, &min, &max, &preferred);
+	return std::make_tuple(min, max, preferred);
+}, "", py::arg("width"))
 ;
 
 

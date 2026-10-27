@@ -99,7 +99,14 @@ py::class_<BStringView, PyBStringView, BView, std::unique_ptr<BStringView, py::n
 .def("AllAttached", &BStringView::AllAttached, "")
 .def("AllDetached", &BStringView::AllDetached, "")
 .def("MakeFocus", &BStringView::MakeFocus, "", py::arg("focus")=true)
-.def("GetPreferredSize", &BStringView::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BStringView& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MinSize", &BStringView::MinSize, "")
 .def("MaxSize", &BStringView::MaxSize, "")
 .def("PreferredSize", &BStringView::PreferredSize, "")

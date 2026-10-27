@@ -118,7 +118,14 @@ py::class_<BStatusBar, PyBStatusBar, BView, std::unique_ptr<BStatusBar, py::node
 .def("AllDetached", &BStatusBar::AllDetached, "")
 .def("WindowActivated", &BStatusBar::WindowActivated, "", py::arg("state"))
 .def("MakeFocus", &BStatusBar::MakeFocus, "", py::arg("focus")=true)
-.def("GetPreferredSize", &BStatusBar::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BStatusBar& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MinSize", &BStatusBar::MinSize, "")
 .def("MaxSize", &BStatusBar::MaxSize, "")
 .def("PreferredSize", &BStatusBar::PreferredSize, "")

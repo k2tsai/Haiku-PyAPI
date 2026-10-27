@@ -117,7 +117,14 @@ py::class_<BBox,PyBBox, BView, std::unique_ptr<BBox, py::nodelete>>(m, "BBox")
 .def("FrameMoved", &BBox::FrameMoved, "", py::arg("newLocation"))
 .def("ResolveSpecifier", &BBox::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("what"), py::arg("property"))
 .def("ResizeToPreferred", &BBox::ResizeToPreferred, "")
-.def("GetPreferredSize", &BBox::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BBox& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MakeFocus", &BBox::MakeFocus, "", py::arg("focused")=true)
 .def("GetSupportedSuites", &BBox::GetSupportedSuites, "", py::arg("message"))
 .def("Perform", &BBox::Perform, "", py::arg("d"), py::arg("arg"))

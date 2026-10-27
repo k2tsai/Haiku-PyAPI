@@ -53,7 +53,14 @@ py::class_<BBitmap, BArchivable>(m, "BBitmap")
 .def("Archive", &BBitmap::Archive, "", py::arg("data"), py::arg("deep")=true)
 .def("InitCheck", &BBitmap::InitCheck, "")
 .def("IsValid", &BBitmap::IsValid, "")
-.def("LockBits", &BBitmap::LockBits, "", py::arg("state")=NULL)
+// FIXED (2026-10-25): beta6 LockBits(uint32* state = NULL) returns status_t
+// (classic returned the bits pointer); the state out-param was unusable from
+// Python. Now (state, status) tuple; bits via Bits().
+.def("LockBits", [](BBitmap& self) -> std::tuple<uint32, status_t> {
+	uint32 state = 0;
+	status_t result = self.LockBits(&state);
+	return std::make_tuple(state, result);
+}, "")
 .def("UnlockBits", &BBitmap::UnlockBits, "")
 .def("Area", &BBitmap::Area, "")
 //.def("Bits", &BBitmap::Bits, "")
@@ -80,7 +87,13 @@ py::class_<BBitmap, BArchivable>(m, "BBitmap")
 .def("ImportBits", py::overload_cast<const void *, int32, int32, color_space, BPoint, BPoint, BSize>(&BBitmap::ImportBits), "", py::arg("data"), py::arg("length"), py::arg("bpr"), py::arg("colorSpace"), py::arg("from"), py::arg("to"), py::arg("size"))
 .def("ImportBits", py::overload_cast<const BBitmap *>(&BBitmap::ImportBits), "", py::arg("bitmap"))
 .def("ImportBits", py::overload_cast<const BBitmap *, BPoint, BPoint, BSize>(&BBitmap::ImportBits), "", py::arg("bitmap"), py::arg("from"), py::arg("to"), py::arg("size"))
-.def("GetOverlayRestrictions", &BBitmap::GetOverlayRestrictions, "", py::arg("restrictions"))
+// FIXED (2026-10-25): overlay_restrictions* out-param; now internal buffer,
+// (restrictions, status) tuple.
+.def("GetOverlayRestrictions", [](const BBitmap& self) -> std::tuple<overlay_restrictions, status_t> {
+	overlay_restrictions restrictions = {};
+	status_t result = self.GetOverlayRestrictions(&restrictions);
+	return std::make_tuple(restrictions, result);
+}, "")
 .def("AddChild", &BBitmap::AddChild, "", py::arg("view"))
 .def("RemoveChild", &BBitmap::RemoveChild, "", py::arg("view"))
 .def("CountChildren", &BBitmap::CountChildren, "")

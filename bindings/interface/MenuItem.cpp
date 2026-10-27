@@ -55,7 +55,12 @@ py::class_<BMenuItem, PyBMenuItem, BInvoker, std::unique_ptr<BMenuItem, py::node
 .def("IsEnabled", &BMenuItem::IsEnabled, "")
 .def("IsMarked", &BMenuItem::IsMarked, "")
 .def("Trigger", &BMenuItem::Trigger, "")
-.def("Shortcut", &BMenuItem::Shortcut, "", py::arg("_modifiers")=NULL)
+// FIXED (2026-10-25): uint32* _modifiers out-param; now (key, modifiers).
+.def("Shortcut", [](const BMenuItem& self) -> std::tuple<char, uint32> {
+	uint32 modifiers = 0;
+	char key = self.Shortcut(&modifiers);
+	return std::make_tuple(key, modifiers);
+}, "")
 .def("Submenu", &BMenuItem::Submenu, "")
 .def("Menu", &BMenuItem::Menu, "")
 .def("Frame", &BMenuItem::Frame, "")

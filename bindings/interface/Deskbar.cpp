@@ -25,7 +25,12 @@ py::class_<BDeskbar>(m, "BDeskbar")
 .def(py::init(), "")
 .def("IsRunning", &BDeskbar::IsRunning, "")
 .def("Frame", &BDeskbar::Frame, "")
-.def("Location", &BDeskbar::Location, "", py::arg("_isExpanded")=NULL)
+// FIXED (2026-10-25): bool* _isExpanded out-param; now (location, expanded).
+.def("Location", [](const BDeskbar& self) -> std::tuple<deskbar_location, bool> {
+	bool isExpanded = false;
+	deskbar_location location = self.Location(&isExpanded);
+	return std::make_tuple(location, isExpanded);
+}, "")
 .def("SetLocation", &BDeskbar::SetLocation, "", py::arg("location"), py::arg("expanded")=false)
 .def("IsExpanded", &BDeskbar::IsExpanded, "")
 .def("Expand", &BDeskbar::Expand, "", py::arg("expand"))
@@ -35,15 +40,34 @@ py::class_<BDeskbar>(m, "BDeskbar")
 .def("SetAutoRaise", &BDeskbar::SetAutoRaise, "", py::arg("autoRaise"))
 .def("IsAutoHide", &BDeskbar::IsAutoHide, "")
 .def("SetAutoHide", &BDeskbar::SetAutoHide, "", py::arg("autoHide"))
-//.def("GetItemInfo", py::overload_cast<int32, const char * *>(&BDeskbar::GetItemInfo, py::const_), "", py::arg("id"), py::arg("_name"))
-.def("GetItemInfo", py::overload_cast<const char *, int32 *>(&BDeskbar::GetItemInfo, py::const_), "", py::arg("name"), py::arg("_id"))
+// FIXED (2026-10-25): const char**/int32* out-params; now tuples
+// (Deskbar.h:54-55).
+.def("GetItemInfo", [](const BDeskbar& self, int32 id) -> std::tuple<std::string, status_t> {
+	const char* name = nullptr;
+	status_t result = self.GetItemInfo(id, &name);
+	return std::make_tuple(result == B_OK ? std::string(name ? name : "") : std::string(), result);
+}, "", py::arg("id"))
+.def("GetItemInfo", [](const BDeskbar& self, const char* name) -> std::tuple<int32, status_t> {
+	int32 id = 0;
+	status_t result = self.GetItemInfo(name, &id);
+	return std::make_tuple(id, result);
+}, "", py::arg("name"))
 .def("HasItem", py::overload_cast<int32>(&BDeskbar::HasItem, py::const_), "", py::arg("id"))
 .def("HasItem", py::overload_cast<const char *>(&BDeskbar::HasItem, py::const_), "", py::arg("name"))
 .def("CountItems", &BDeskbar::CountItems, "")
 .def("MaxItemWidth", &BDeskbar::MaxItemWidth, "")
 .def("MaxItemHeight", &BDeskbar::MaxItemHeight, "")
-.def("AddItem", py::overload_cast<BView *, int32 *>(&BDeskbar::AddItem), "", py::arg("archivableView"), py::arg("_id")=NULL)
-.def("AddItem", py::overload_cast<entry_ref *, int32 *>(&BDeskbar::AddItem), "", py::arg("addOn"), py::arg("_id")=NULL)
+// FIXED (2026-10-25): int32* _id out-param; now (id, status) tuples.
+.def("AddItem", [](BDeskbar& self, BView* archivableView) -> std::tuple<int32, status_t> {
+	int32 id = 0;
+	status_t result = self.AddItem(archivableView, &id);
+	return std::make_tuple(id, result);
+}, "", py::arg("archivableView"))
+.def("AddItem", [](BDeskbar& self, entry_ref& addOn) -> std::tuple<int32, status_t> {
+	int32 id = 0;
+	status_t result = self.AddItem(&addOn, &id);
+	return std::make_tuple(id, result);
+}, "", py::arg("addOn"))
 .def("RemoveItem", py::overload_cast<int32>(&BDeskbar::RemoveItem), "", py::arg("id"))
 .def("RemoveItem", py::overload_cast<const char *>(&BDeskbar::RemoveItem), "", py::arg("name"))
 ;

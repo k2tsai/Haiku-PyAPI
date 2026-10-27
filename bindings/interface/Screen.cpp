@@ -34,14 +34,21 @@ py::class_<BScreen>(m, "BScreen")
 .def("InvertIndex", &BScreen::InvertIndex, "", py::arg("index"))
 .def("ColorMap", &BScreen::ColorMap, "")
 //.def("GetBitmap", &BScreen::GetBitmap, "", py::arg("_bitmap"), py::arg("drawCursor")=true, py::arg("frame")=NULL)
-.def("GetBitmap", [](BScreen& self, bool drawCursor, BRect* frame) -> std::tuple<BBitmap*,status_t> {
-            BBitmap* buffer = new BBitmap(*frame,B_RGBA32);
-            status_t result = self.GetBitmap(&buffer,drawCursor,frame);
-            //if (result != B_OK) {
-            //    throw std::runtime_error("Errore durante la chiamata a GetBitmap");
-            //}
-            return std::make_tuple(buffer,result);
-        }, py::arg("drawCursor")=true, py::arg("frame")=NULL)
+// FIXED (2026-10-25): the old lambda did `new BBitmap(*frame, ...)` while
+// `frame` defaulted to NULL (segfault when omitted), and the pre-allocated
+// bitmap was leaked anyway — beta6's GetBitmap(BBitmap**) allocates the
+// bitmap itself (Screen.h:47). Now: internal buffer, (bitmap, status) tuple,
+// optional frame.
+.def("GetBitmap", [](BScreen& self, bool drawCursor) -> std::tuple<BBitmap*, status_t> {
+            BBitmap* buffer = nullptr;
+            status_t result = self.GetBitmap(&buffer, drawCursor);
+            return std::make_tuple(buffer, result);
+        }, "", py::arg("drawCursor")=true)
+.def("GetBitmap", [](BScreen& self, bool drawCursor, BRect& frame) -> std::tuple<BBitmap*, status_t> {
+            BBitmap* buffer = nullptr;
+            status_t result = self.GetBitmap(&buffer, drawCursor, &frame);
+            return std::make_tuple(buffer, result);
+        }, "", py::arg("drawCursor")=true, py::arg("frame"))
 /*
 .def("GetBitmap", [](BScreen& self, bool drawCursor, BRect* frame) -> BBitmap* {
             // Chiamare la funzione originale
@@ -106,18 +113,53 @@ py::class_<BScreen>(m, "BScreen")
         }
 )
 */
-.def("GetMode", py::overload_cast<display_mode *>(&BScreen::GetMode), "", py::arg("mode"))
-.def("GetMode", py::overload_cast<uint32, display_mode *>(&BScreen::GetMode), "", py::arg("workspace"), py::arg("mode"))
+// FIXED (2026-10-25): display_mode* out-param (unregistered from Python ->
+// None -> NULL-deref); now (mode, status) tuples (Screen.h:66-68).
+.def("GetMode", [](BScreen& self) -> std::tuple<display_mode, status_t> {
+            display_mode mode = {};
+            status_t result = self.GetMode(&mode);
+            return std::make_tuple(mode, result);
+        }, "")
+.def("GetMode", [](BScreen& self, uint32 workspace) -> std::tuple<display_mode, status_t> {
+            display_mode mode = {};
+            status_t result = self.GetMode(workspace, &mode);
+            return std::make_tuple(mode, result);
+        }, "", py::arg("workspace"))
 .def("SetMode", py::overload_cast<display_mode *, bool>(&BScreen::SetMode), "", py::arg("mode"), py::arg("makeDefault")=false)
 .def("SetMode", py::overload_cast<uint32, display_mode *, bool>(&BScreen::SetMode), "", py::arg("workspace"), py::arg("mode"), py::arg("makeDefault")=false)
-.def("GetDeviceInfo", &BScreen::GetDeviceInfo, "", py::arg("info"))
-.def("GetMonitorInfo", &BScreen::GetMonitorInfo, "", py::arg("info"))
-.def("GetPixelClockLimits", &BScreen::GetPixelClockLimits, "", py::arg("mode"), py::arg("_low"), py::arg("_high"))
-.def("GetTimingConstraints", &BScreen::GetTimingConstraints, "", py::arg("timingConstraints"))
+// FIXED (2026-10-25): out-params (accelerant_device_info*/monitor_info*/*
+// uint32*/display_timing_constraints*) were NULL-deref hazards from Python;
+// now internal buffers, tuples (values..., status) (Screen.h:74-82).
+.def("GetDeviceInfo", [](BScreen& self) -> std::tuple<accelerant_device_info, status_t> {
+            accelerant_device_info info = {};
+            status_t result = self.GetDeviceInfo(&info);
+            return std::make_tuple(info, result);
+        }, "")
+.def("GetMonitorInfo", [](BScreen& self) -> std::tuple<monitor_info, status_t> {
+            monitor_info info = {};
+            status_t result = self.GetMonitorInfo(&info);
+            return std::make_tuple(info, result);
+        }, "")
+.def("GetPixelClockLimits", [](BScreen& self, display_mode& mode) -> std::tuple<uint32, uint32, status_t> {
+            uint32 low = 0;
+            uint32 high = 0;
+            status_t result = self.GetPixelClockLimits(&mode, &low, &high);
+            return std::make_tuple(low, high, result);
+        }, "", py::arg("mode"))
+.def("GetTimingConstraints", [](BScreen& self) -> std::tuple<display_timing_constraints, status_t> {
+            display_timing_constraints timingConstraints = {};
+            status_t result = self.GetTimingConstraints(&timingConstraints);
+            return std::make_tuple(timingConstraints, result);
+        }, "")
 .def("SetDPMS", &BScreen::SetDPMS, "", py::arg("state"))
 .def("DPMSState", &BScreen::DPMSState, "")
 .def("DPMSCapabilites", &BScreen::DPMSCapabilites, "")
-.def("GetBrightness", &BScreen::GetBrightness, "", py::arg("brightness"))
+// FIXED (2026-10-25): float* out-param; now (brightness, status).
+.def("GetBrightness", [](BScreen& self) -> std::tuple<float, status_t> {
+            float brightness = 0;
+            status_t result = self.GetBrightness(&brightness);
+            return std::make_tuple(brightness, result);
+        }, "")
 .def("SetBrightness", &BScreen::SetBrightness, "", py::arg("brightness"))
 ;
 

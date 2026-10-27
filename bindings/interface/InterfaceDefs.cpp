@@ -24,10 +24,7 @@ m.attr("B_SPACE") = 32;
 m.attr("B_TAB") = 9;
 m.attr("B_ESCAPE") = 27;
 m.attr("B_SUBSTITUTE") = 26;
-m.attr("B_LEFT_ARROW") = 28;
-m.attr("B_RIGHT_ARROW") = 29;
-m.attr("B_UP_ARROW") = 30;
-m.attr("B_DOWN_ARROW") = 31;
+// (duplicate arrow rows removed 2026-10-25 — see the 0x1c..0x1f block below)
 m.attr("B_INSERT") = 5;
 m.attr("B_DELETE") = 127;
 m.attr("B_HOME") = 1;
@@ -46,6 +43,8 @@ m.attr("B_SPACE") = 0x20;
 m.attr("B_TAB") = 0x09;
 m.attr("B_ESCAPE") = 0x1b;
 m.attr("B_SUBSTITUTE") = 0x1a;
+// beta6: InterfaceDefs.h:74-77 (global cursor ids; the BControlLook nested
+// enum of the same name has values 0..3 and is NOT exported here)
 m.attr("B_LEFT_ARROW") = 0x1c;
 m.attr("B_RIGHT_ARROW") = 0x1d;
 m.attr("B_UP_ARROW") = 0x1e;

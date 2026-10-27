@@ -128,7 +128,14 @@ py::class_<BOutlineListView,PyBOutlineListView, BListView,std::unique_ptr<BOutli
 .def("GetSupportedSuites", &BOutlineListView::GetSupportedSuites, "", py::arg("data"))
 .def("Perform", &BOutlineListView::Perform, "", py::arg("code"), py::arg("data"))
 .def("ResizeToPreferred", &BOutlineListView::ResizeToPreferred, "")
-.def("GetPreferredSize", &BOutlineListView::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BOutlineListView& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MakeFocus", &BOutlineListView::MakeFocus, "", py::arg("focus")=true)
 .def("AllAttached", &BOutlineListView::AllAttached, "")
 .def("AllDetached", &BOutlineListView::AllDetached, "")

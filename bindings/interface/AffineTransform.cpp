@@ -66,14 +66,36 @@ py::class_<BAffineTransform, BFlattenable>(m, "BAffineTransform")
 .def_static("AffineScaling", py::overload_cast<double, double>(&BAffineTransform::AffineScaling), "", py::arg("x"), py::arg("y"))
 .def_static("AffineScaling", py::overload_cast<double>(&BAffineTransform::AffineScaling), "", py::arg("scale"))
 .def_static("AffineShearing", &BAffineTransform::AffineShearing, "", py::arg("x"), py::arg("y"))
-.def("Apply", py::overload_cast<double *, double *>(&BAffineTransform::Apply, py::const_), "", py::arg("x"), py::arg("y"))
-.def("ApplyInverse", py::overload_cast<double *, double *>(&BAffineTransform::ApplyInverse, py::const_), "", py::arg("x"), py::arg("y"))
+// FIXED (2026-10-25): in/out pointer overloads (double*/BPoint*/BPoint*[])
+// were unusable from Python (unregistered double* -> None -> NULL-deref;
+// the BPoint* one was redundant with the by-value overload). Now value /
+// list in, list out (AffineTransform.h:68-78).
+.def("Apply", [](const BAffineTransform& self, double x, double y) -> std::tuple<double, double> {
+	double nx = x;
+	double ny = y;
+	self.Apply(&nx, &ny);
+	return std::make_tuple(nx, ny);
+}, "", py::arg("x"), py::arg("y"))
+.def("ApplyInverse", [](const BAffineTransform& self, double x, double y) -> std::tuple<double, double> {
+	double nx = x;
+	double ny = y;
+	self.ApplyInverse(&nx, &ny);
+	return std::make_tuple(nx, ny);
+}, "", py::arg("x"), py::arg("y"))
 .def("Apply", py::overload_cast<const BPoint &>(&BAffineTransform::Apply, py::const_), "", py::arg("point"))
 .def("ApplyInverse", py::overload_cast<const BPoint &>(&BAffineTransform::ApplyInverse, py::const_), "", py::arg("point"))
-.def("Apply", py::overload_cast<BPoint *>(&BAffineTransform::Apply, py::const_), "", py::arg("point"))
-.def("ApplyInverse", py::overload_cast<BPoint *>(&BAffineTransform::ApplyInverse, py::const_), "", py::arg("point"))
-.def("Apply", py::overload_cast<BPoint *, uint32>(&BAffineTransform::Apply, py::const_), "", py::arg("points"), py::arg("count"))
-.def("ApplyInverse", py::overload_cast<BPoint *, uint32>(&BAffineTransform::ApplyInverse, py::const_), "", py::arg("points"), py::arg("count"))
+.def("Apply", [](const BAffineTransform& self, std::vector<BPoint> points) -> std::vector<BPoint> {
+	std::vector<BPoint> buffer(points);
+	if (!buffer.empty())
+		self.Apply(buffer.data(), buffer.size());
+	return buffer;
+}, "", py::arg("points"))
+.def("ApplyInverse", [](const BAffineTransform& self, std::vector<BPoint> points) -> std::vector<BPoint> {
+	std::vector<BPoint> buffer(points);
+	if (!buffer.empty())
+		self.ApplyInverse(buffer.data(), buffer.size());
+	return buffer;
+}, "", py::arg("points"))
 .def("TranslateBy", py::overload_cast<double, double>(&BAffineTransform::TranslateBy), "", py::arg("x"), py::arg("y"))
 .def("TranslateBy", py::overload_cast<const BPoint &>(&BAffineTransform::TranslateBy), "", py::arg("delta"))
 .def("PreTranslateBy", &BAffineTransform::PreTranslateBy, "", py::arg("x"), py::arg("y"))
@@ -129,12 +151,36 @@ py::class_<BAffineTransform, BFlattenable>(m, "BAffineTransform")
 .def("Reset", &BAffineTransform::Reset, "")
 .def("Determinant", &BAffineTransform::Determinant, "")
 .def("InverseDeterminant", &BAffineTransform::InverseDeterminant, "")
-.def("GetTranslation", &BAffineTransform::GetTranslation, "", py::arg("tx"), py::arg("ty"))
+// FIXED (2026-10-25): double* out-params; now (tx, ty) tuple.
+.def("GetTranslation", [](const BAffineTransform& self) -> std::tuple<double, double> {
+	double tx = 0;
+	double ty = 0;
+	self.GetTranslation(&tx, &ty);
+	return std::make_tuple(tx, ty);
+}, "")
 .def("Rotation", &BAffineTransform::Rotation, "")
 .def("Scale", &BAffineTransform::Scale, "")
-.def("GetScale", &BAffineTransform::GetScale, "", py::arg("sx"), py::arg("sy"))
-.def("GetScaleAbs", &BAffineTransform::GetScaleAbs, "", py::arg("sx"), py::arg("sy"))
-.def("GetAffineParameters", &BAffineTransform::GetAffineParameters, "", py::arg("translationX"), py::arg("translationY"), py::arg("rotation"), py::arg("scaleX"), py::arg("scaleY"), py::arg("shearX"), py::arg("shearY"))
+// FIXED (2026-10-25): double* out-params; now tuples.
+.def("GetScale", [](const BAffineTransform& self) -> std::tuple<double, double> {
+	double sx = 0;
+	double sy = 0;
+	self.GetScale(&sx, &sy);
+	return std::make_tuple(sx, sy);
+}, "")
+.def("GetScaleAbs", [](const BAffineTransform& self) -> std::tuple<double, double> {
+	double sx = 0;
+	double sy = 0;
+	self.GetScaleAbs(&sx, &sy);
+	return std::make_tuple(sx, sy);
+}, "")
+.def("GetAffineParameters", [](const BAffineTransform& self) -> std::tuple<double, double, double, double, double, double, double> {
+	double translationX = 0, translationY = 0, rotation = 0;
+	double scaleX = 0, scaleY = 0, shearX = 0, shearY = 0;
+	self.GetAffineParameters(&translationX, &translationY, &rotation,
+		&scaleX, &scaleY, &shearX, &shearY);
+	return std::make_tuple(translationX, translationY, rotation,
+		scaleX, scaleY, shearX, shearY);
+}, "")
 .def_property_readonly_static("kDefaultEpsilon", []() {
             return AltBAffineTransform::getKDefaultEpsilon();
         }, "")

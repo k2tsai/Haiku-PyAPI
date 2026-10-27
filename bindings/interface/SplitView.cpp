@@ -17,7 +17,15 @@ py::class_<BSplitView, BView>(m, "BSplitView")
 .def("SetInsets", py::overload_cast<float, float, float, float>(&BSplitView::SetInsets), "", py::arg("left"), py::arg("top"), py::arg("right"), py::arg("bottom"))
 .def("SetInsets", py::overload_cast<float, float>(&BSplitView::SetInsets), "", py::arg("horizontal"), py::arg("vertical"))
 .def("SetInsets", py::overload_cast<float>(&BSplitView::SetInsets), "", py::arg("insets"))
-.def("GetInsets", &BSplitView::GetInsets, "", py::arg("left"), py::arg("top"), py::arg("right"), py::arg("bottom"))
+// FIXED (2026-10-25): float* out-params; now (left, top, right, bottom).
+.def("GetInsets", [](const BSplitView& self) -> std::tuple<float, float, float, float> {
+	float left = 0;
+	float top = 0;
+	float right = 0;
+	float bottom = 0;
+	self.GetInsets(&left, &top, &right, &bottom);
+	return std::make_tuple(left, top, right, bottom);
+}, "")
 .def("Spacing", &BSplitView::Spacing, "")
 .def("SetSpacing", &BSplitView::SetSpacing, "", py::arg("spacing"))
 .def("Orientation", &BSplitView::Orientation, "")

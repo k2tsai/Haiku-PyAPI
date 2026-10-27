@@ -137,7 +137,14 @@ py::class_<BMenuField, PyBMenuField, BView, std::unique_ptr<BMenuField,py::nodel
 .def("ResolveSpecifier", &BMenuField::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("form"), py::arg("property"))
 .def("GetSupportedSuites", &BMenuField::GetSupportedSuites, "", py::arg("data"))
 .def("ResizeToPreferred", &BMenuField::ResizeToPreferred, "")
-.def("GetPreferredSize", &BMenuField::GetPreferredSize, "", py::arg("width"), py::arg("height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BMenuField& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MinSize", &BMenuField::MinSize, "")
 .def("MaxSize", &BMenuField::MaxSize, "")
 .def("PreferredSize", &BMenuField::PreferredSize, "")

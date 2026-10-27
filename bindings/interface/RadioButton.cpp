@@ -103,7 +103,14 @@ py::class_<BRadioButton, PyBRadioButton, BControl,std::unique_ptr<BRadioButton, 
 .def("AttachedToWindow", &BRadioButton::AttachedToWindow, "")
 .def("KeyDown", &BRadioButton::KeyDown, "", py::arg("bytes"), py::arg("numBytes"))
 .def("SetValue", &BRadioButton::SetValue, "", py::arg("value"))
-.def("GetPreferredSize", &BRadioButton::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BRadioButton& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BRadioButton::ResizeToPreferred, "")
 .def("Invoke", &BRadioButton::Invoke, "", py::arg("message")=NULL)
 .def("MessageReceived", &BRadioButton::MessageReceived, "", py::arg("message"))

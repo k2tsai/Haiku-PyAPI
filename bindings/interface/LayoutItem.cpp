@@ -96,7 +96,15 @@ py::class_<BLayoutItem,PyBLayoutItem,std::unique_ptr<BLayoutItem, py::nodelete>>
 .def("Frame", &BLayoutItem::Frame, "")
 .def("SetFrame", &BLayoutItem::SetFrame, "", py::arg("frame"))
 .def("HasHeightForWidth", &BLayoutItem::HasHeightForWidth, "")
-.def("GetHeightForWidth", &BLayoutItem::GetHeightForWidth, "", py::arg("width"), py::arg("min"), py::arg("max"), py::arg("preferred"))
+// FIXED (2026-10-25): float* out-params (NULL-deref from Python); now a
+// (min, max, preferred) tuple.
+.def("GetHeightForWidth", [](BLayoutItem& self, float width) -> std::tuple<float, float, float> {
+	float min = 0;
+	float max = 0;
+	float preferred = 0;
+	self.GetHeightForWidth(width, &min, &max, &preferred);
+	return std::make_tuple(min, max, preferred);
+}, "", py::arg("width"))
 .def("View", &BLayoutItem::View, "")
 .def("InvalidateLayout", &BLayoutItem::InvalidateLayout, "", py::arg("children")=false)
 .def("Relayout", &BLayoutItem::Relayout, "", py::arg("immediate")=false)

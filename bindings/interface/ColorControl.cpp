@@ -126,7 +126,14 @@ py::class_<BColorControl, PyBColorControl, BControl,std::unique_ptr<BColorContro
 .def("MouseUp", &BColorControl::MouseUp, "", py::arg("point"))
 .def("MouseMoved", &BColorControl::MouseMoved, "", py::arg("point"), py::arg("code"), py::arg("dragMessage"))
 .def("DetachedFromWindow", &BColorControl::DetachedFromWindow, "")
-.def("GetPreferredSize", &BColorControl::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BColorControl& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BColorControl::ResizeToPreferred, "")
 .def("Invoke", &BColorControl::Invoke, "", py::arg("message")=NULL)
 .def("FrameMoved", &BColorControl::FrameMoved, "", py::arg("newPosition"))

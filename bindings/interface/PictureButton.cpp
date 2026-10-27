@@ -117,7 +117,14 @@ py::class_<BPictureButton, PyBPictureButton, BControl,std::unique_ptr<BPictureBu
 .def("AllAttached", &BPictureButton::AllAttached, "")
 .def("AllDetached", &BPictureButton::AllDetached, "")
 .def("ResizeToPreferred", &BPictureButton::ResizeToPreferred, "")
-.def("GetPreferredSize", &BPictureButton::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BPictureButton& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("FrameMoved", &BPictureButton::FrameMoved, "", py::arg("newPosition"))
 .def("FrameResized", &BPictureButton::FrameResized, "", py::arg("newWidth"), py::arg("newHeight"))
 .def("WindowActivated", &BPictureButton::WindowActivated, "", py::arg("active"))

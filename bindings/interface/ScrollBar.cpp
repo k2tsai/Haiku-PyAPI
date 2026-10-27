@@ -108,16 +108,35 @@ py::class_<BScrollBar, PyBScrollBar, BView, std::unique_ptr<BScrollBar, py::node
 .def("Proportion", &BScrollBar::Proportion, "")
 .def("ValueChanged", &BScrollBar::ValueChanged, "", py::arg("newValue"))
 .def("SetRange", &BScrollBar::SetRange, "", py::arg("min"), py::arg("max"))
-.def("GetRange", &BScrollBar::GetRange, "", py::arg("_min"), py::arg("_max"))
+// FIXED (2026-10-25): float* out-params; now (min, max) tuple.
+.def("GetRange", [](const BScrollBar& self) -> std::tuple<float, float> {
+	float min = 0;
+	float max = 0;
+	self.GetRange(&min, &max);
+	return std::make_tuple(min, max);
+}, "")
 .def("SetSteps", &BScrollBar::SetSteps, "", py::arg("smallStep"), py::arg("largeStep"))
-.def("GetSteps", &BScrollBar::GetSteps, "", py::arg("_smallStep"), py::arg("_largeStep"))
+// FIXED (2026-10-25): float* out-params; now (smallStep, largeStep) tuple.
+.def("GetSteps", [](const BScrollBar& self) -> std::tuple<float, float> {
+	float smallStep = 0;
+	float largeStep = 0;
+	self.GetSteps(&smallStep, &largeStep);
+	return std::make_tuple(smallStep, largeStep);
+}, "")
 .def("SetTarget", py::overload_cast<BView *>(&BScrollBar::SetTarget), "", py::arg("target"))
 .def("SetTarget", py::overload_cast<const char *>(&BScrollBar::SetTarget), "", py::arg("targetName"))
 .def("Target", &BScrollBar::Target, "")
 .def("SetOrientation", &BScrollBar::SetOrientation, "", py::arg("direction"))
 .def("Orientation", &BScrollBar::Orientation, "")
 .def("SetBorderHighlighted", &BScrollBar::SetBorderHighlighted, "", py::arg("highlight"))
-.def("GetPreferredSize", &BScrollBar::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BScrollBar& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BScrollBar::ResizeToPreferred, "")
 .def("MakeFocus", &BScrollBar::MakeFocus, "", py::arg("focus")=true)
 .def("MinSize", &BScrollBar::MinSize, "")

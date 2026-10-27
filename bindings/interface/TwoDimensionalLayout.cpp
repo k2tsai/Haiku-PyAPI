@@ -60,14 +60,30 @@ py::class_<BTwoDimensionalLayout,PyBTwoDimensionalLayout, BAbstractLayout>(m, "B
 .def("SetInsets", py::overload_cast<float, float, float, float>(&BTwoDimensionalLayout::SetInsets), "", py::arg("left"), py::arg("top"), py::arg("right"), py::arg("bottom"))
 .def("SetInsets", py::overload_cast<float, float>(&BTwoDimensionalLayout::SetInsets), "", py::arg("horizontal"), py::arg("vertical"))
 .def("SetInsets", py::overload_cast<float>(&BTwoDimensionalLayout::SetInsets), "", py::arg("insets"))
-.def("GetInsets", &BTwoDimensionalLayout::GetInsets, "", py::arg("left"), py::arg("top"), py::arg("right"), py::arg("bottom"))
+// FIXED (2026-10-25): float* out-params; now (left, top, right, bottom).
+.def("GetInsets", [](const BTwoDimensionalLayout& self) -> std::tuple<float, float, float, float> {
+	float left = 0;
+	float top = 0;
+	float right = 0;
+	float bottom = 0;
+	self.GetInsets(&left, &top, &right, &bottom);
+	return std::make_tuple(left, top, right, bottom);
+}, "")
 .def("AlignLayoutWith", &BTwoDimensionalLayout::AlignLayoutWith, "", py::arg("other"), py::arg("orientation"))
 .def("BaseMinSize", &BTwoDimensionalLayout::BaseMinSize, "")
 .def("BaseMaxSize", &BTwoDimensionalLayout::BaseMaxSize, "")
 .def("BasePreferredSize", &BTwoDimensionalLayout::BasePreferredSize, "")
 .def("BaseAlignment", &BTwoDimensionalLayout::BaseAlignment, "")
 .def("HasHeightForWidth", &BTwoDimensionalLayout::HasHeightForWidth, "")
-.def("GetHeightForWidth", &BTwoDimensionalLayout::GetHeightForWidth, "", py::arg("width"), py::arg("min"), py::arg("max"), py::arg("preferred"))
+// FIXED (2026-10-25): float* out-params (NULL-deref from Python); now a
+// (min, max, preferred) tuple.
+.def("GetHeightForWidth", [](BTwoDimensionalLayout& self, float width) -> std::tuple<float, float, float> {
+	float min = 0;
+	float max = 0;
+	float preferred = 0;
+	self.GetHeightForWidth(width, &min, &max, &preferred);
+	return std::make_tuple(min, max, preferred);
+}, "", py::arg("width"))
 .def("SetFrame", &BTwoDimensionalLayout::SetFrame, "", py::arg("frame"))
 .def("Archive", &BTwoDimensionalLayout::Archive, "", py::arg("into"), py::arg("deep")=true)
 .def("Perform", &BTwoDimensionalLayout::Perform, "", py::arg("d"), py::arg("arg"))

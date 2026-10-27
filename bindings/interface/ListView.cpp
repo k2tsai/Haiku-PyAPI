@@ -178,7 +178,14 @@ py::class_<BListView, PyBListView, BView, BInvoker,std::unique_ptr<BListView, py
 .def("MouseUp", &BListView::MouseUp, "", py::arg("where"))
 .def("MouseMoved", &BListView::MouseMoved, "", py::arg("where"), py::arg("code"), py::arg("dragMessage"))
 .def("ResizeToPreferred", &BListView::ResizeToPreferred, "")
-.def("GetPreferredSize", &BListView::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BListView& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MinSize", &BListView::MinSize, "")
 .def("MaxSize", &BListView::MaxSize, "")
 .def("PreferredSize", &BListView::PreferredSize, "")

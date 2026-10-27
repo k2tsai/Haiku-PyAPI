@@ -4,6 +4,7 @@
 #include <pybind11/operators.h>
 
 #include <interface/Dragger.h>
+#include <GraphicsDefs.h>
 #include <Locker.h>
 #include <List.h>
 #include <View.h>
@@ -104,7 +105,14 @@ py::class_<BDragger, BView>(m, "BDragger")
 .def("GetSupportedSuites", &BDragger::GetSupportedSuites, "", py::arg("data"))
 .def("Perform", &BDragger::Perform, "", py::arg("code"), py::arg("data"))
 .def("ResizeToPreferred", &BDragger::ResizeToPreferred, "")
-.def("GetPreferredSize", &BDragger::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BDragger& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MakeFocus", &BDragger::MakeFocus, "", py::arg("focus")=true)
 .def("AllAttached", &BDragger::AllAttached, "")
 .def("AllDetached", &BDragger::AllDetached, "")
@@ -112,7 +120,19 @@ py::class_<BDragger, BView>(m, "BDragger")
 .def("PopUp", &BDragger::PopUp, "")
 .def("InShelf", &BDragger::InShelf, "")
 .def("Target", &BDragger::Target, "")
-.def("DragBitmap", &BDragger::DragBitmap, "", py::arg("offset"), py::arg("mode"))
+// FIXED (2026-10-25): beta6 DragBitmap(BPoint* offset, drawing_mode* mode)
+// (Dragger.h:73) — both params are out-pointers; the drawing_mode* one was
+// passed a pointer into a static enum value (corruption). Now internal
+// buffers, tuple (bitmap, offset, mode); the bitmap is returned by reference
+// (the dragger manages its lifetime).
+.def("DragBitmap", [](BDragger& self) -> std::tuple<py::object, BPoint, drawing_mode> {
+	BPoint offset;
+	// beta6: B_OP_OVERWRITE was renamed B_OP_OVER (GraphicsDefs.h:309-320)
+	drawing_mode mode = B_OP_OVER;
+	BBitmap* bitmap = self.DragBitmap(&offset, &mode);
+	return std::make_tuple(
+		py::cast(bitmap, py::return_value_policy::reference), offset, mode);
+}, "")
 //.def_readwrite("Private", &BDragger::Private, "")
 ;
 

@@ -115,7 +115,14 @@ py::class_<BControl, PyBControl, BView, BInvoker>(m, "BControl")
 .def("Value", &BControl::Value, "")
 .def("SetEnabled", &BControl::SetEnabled, "", py::arg("enabled"))
 .def("IsEnabled", &BControl::IsEnabled, "")
-.def("GetPreferredSize", &BControl::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BControl& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BControl::ResizeToPreferred, "")
 .def("Invoke", &BControl::Invoke, "", py::arg("message")=NULL)
 .def("ResolveSpecifier", &BControl::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("what"), py::arg("property"))

@@ -86,7 +86,14 @@ py::class_<BPopUpMenu, PyBPopUpMenu, BMenu, std::unique_ptr<BPopUpMenu,py::nodel
 .def("GetSupportedSuites", &BPopUpMenu::GetSupportedSuites, "", py::arg("data"))
 .def("Perform", &BPopUpMenu::Perform, "", py::arg("code"), py::arg("_data"))
 .def("ResizeToPreferred", &BPopUpMenu::ResizeToPreferred, "")
-.def("GetPreferredSize", &BPopUpMenu::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BPopUpMenu& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MakeFocus", &BPopUpMenu::MakeFocus, "", py::arg("state")=true)
 .def("AllAttached", &BPopUpMenu::AllAttached, "")
 .def("AllDetached", &BPopUpMenu::AllDetached, "")

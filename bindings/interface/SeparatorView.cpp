@@ -48,7 +48,14 @@ py::class_<BSeparatorView, PyBSeparatorView, BView>(m, "BSeparatorView")
 .def_static("Instantiate", &BSeparatorView::Instantiate, "", py::arg("archive"))
 .def("Archive", &BSeparatorView::Archive, "", py::arg("into"), py::arg("deep")=true)
 .def("Draw", &BSeparatorView::Draw, "", py::arg("updateRect"))
-.def("GetPreferredSize", &BSeparatorView::GetPreferredSize, "", py::arg("width"), py::arg("height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BSeparatorView& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("MinSize", &BSeparatorView::MinSize, "")
 .def("MaxSize", &BSeparatorView::MaxSize, "")
 .def("PreferredSize", &BSeparatorView::PreferredSize, "")

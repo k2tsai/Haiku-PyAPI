@@ -326,25 +326,30 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("Parent", &BView::Parent, "")
 .def("Bounds", &BView::Bounds, "")
 .def("Frame", &BView::Frame, "")
-.def("ConvertToScreen", py::overload_cast<BPoint *>(&BView::ConvertToScreen, py::const_), "", py::arg("point"))
+// FIXED (2026-10-25): the in/out pointer overloads (BPoint*/BRect*) are gone;
+// beta6 added by-value overloads (View.h:216-231) that return the converted
+// value, so no pointer is ever handed to the API.
 .def("ConvertToScreen", py::overload_cast<BPoint>(&BView::ConvertToScreen, py::const_), "", py::arg("point"))
-.def("ConvertFromScreen", py::overload_cast<BPoint *>(&BView::ConvertFromScreen, py::const_), "", py::arg("point"))
 .def("ConvertFromScreen", py::overload_cast<BPoint>(&BView::ConvertFromScreen, py::const_), "", py::arg("point"))
-.def("ConvertToScreen", py::overload_cast<BRect *>(&BView::ConvertToScreen, py::const_), "", py::arg("rect"))
 .def("ConvertToScreen", py::overload_cast<BRect>(&BView::ConvertToScreen, py::const_), "", py::arg("rect"))
-.def("ConvertFromScreen", py::overload_cast<BRect *>(&BView::ConvertFromScreen, py::const_), "", py::arg("rect"))
 .def("ConvertFromScreen", py::overload_cast<BRect>(&BView::ConvertFromScreen, py::const_), "", py::arg("rect"))
-.def("ConvertToParent", py::overload_cast<BPoint *>(&BView::ConvertToParent, py::const_), "", py::arg("point"))
 .def("ConvertToParent", py::overload_cast<BPoint>(&BView::ConvertToParent, py::const_), "", py::arg("point"))
-.def("ConvertFromParent", py::overload_cast<BPoint *>(&BView::ConvertFromParent, py::const_), "", py::arg("point"))
 .def("ConvertFromParent", py::overload_cast<BPoint>(&BView::ConvertFromParent, py::const_), "", py::arg("point"))
-.def("ConvertToParent", py::overload_cast<BRect *>(&BView::ConvertToParent, py::const_), "", py::arg("rect"))
 .def("ConvertToParent", py::overload_cast<BRect>(&BView::ConvertToParent, py::const_), "", py::arg("rect"))
-.def("ConvertFromParent", py::overload_cast<BRect *>(&BView::ConvertFromParent, py::const_), "", py::arg("rect"))
 .def("ConvertFromParent", py::overload_cast<BRect>(&BView::ConvertFromParent, py::const_), "", py::arg("rect"))
 .def("LeftTop", &BView::LeftTop, "")
-.def("GetClippingRegion", &BView::GetClippingRegion, "", py::arg("region"))
-.def("ConstrainClippingRegion", &BView::ConstrainClippingRegion, "", py::arg("region"))
+// FIXED (2026-10-25): out-param BRegion* — now constructs internally and
+// returns the region (View.h:234-235).
+.def("GetClippingRegion", [](const BView& self) -> BRegion {
+	BRegion region;
+	self.GetClippingRegion(&region);
+	return region;
+}, "")
+.def("ConstrainClippingRegion", [](BView& self, BRegion region) -> BRegion {
+	// beta6 ConstrainClippingRegion returns void (View.h:235)
+	self.ConstrainClippingRegion(&region);
+	return region;
+}, "", py::arg("region"))
 .def("ClipToPicture", &BView::ClipToPicture, "", py::arg("picture"), py::arg("where")=B_ORIGIN, py::arg("sync")=true)
 .def("ClipToInversePicture", &BView::ClipToInversePicture, "", py::arg("picture"), py::arg("where")=B_ORIGIN, py::arg("sync")=true)
 .def("ClipToRect", &BView::ClipToRect, "", py::arg("rect"))
@@ -354,7 +359,15 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("SetDrawingMode", &BView::SetDrawingMode, "", py::arg("mode"))
 .def("DrawingMode", &BView::DrawingMode, "")
 .def("SetBlendingMode", &BView::SetBlendingMode, "", py::arg("srcAlpha"), py::arg("alphaFunc"))
-.def("GetBlendingMode", &BView::GetBlendingMode, "", py::arg("srcAlpha"), py::arg("alphaFunc"))
+// FIXED (2026-10-25): both params were out-pointers into registered enum
+// values (a write through them corrupted the static enum data); now
+// internal buffers, tuple return (View.h:251-252).
+.def("GetBlendingMode", [](const BView& self) -> std::tuple<source_alpha, alpha_function> {
+	source_alpha srcAlpha;
+	alpha_function alphaFunc;
+	self.GetBlendingMode(&srcAlpha, &alphaFunc);
+	return std::make_tuple(srcAlpha, alphaFunc);
+}, "")
 .def("SetPenSize", &BView::SetPenSize, "", py::arg("size"))
 .def("PenSize", &BView::PenSize, "")
 .def("SetViewCursor", &BView::SetViewCursor, "", py::arg("cursor"), py::arg("sync")=true)
@@ -367,7 +380,13 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("SetViewColor", py::overload_cast<uchar, uchar, uchar, uchar>(&BView::SetViewColor), "", py::arg("red"), py::arg("green"), py::arg("blue"), py::arg("alpha")=255)
 .def("ViewColor", &BView::ViewColor, "")
 .def("SetViewUIColor", &BView::SetViewUIColor, "", py::arg("which"), py::arg("tint")=B_NO_TINT)
-.def("ViewUIColor", &BView::ViewUIColor, "", py::arg("tint")=NULL)
+// FIXED (2026-10-25): float* tint was an unusable out-param (unregistered
+// type -> None -> the value was lost); now returns (color, tint).
+.def("ViewUIColor", [](const BView& self) -> std::tuple<color_which, float> {
+	float tint = 0;
+	color_which which = self.ViewUIColor(&tint);
+	return std::make_tuple(which, tint);
+}, "")
 .def("SetViewBitmap", py::overload_cast<const BBitmap *, BRect, BRect, uint32, uint32>(&BView::SetViewBitmap), "", py::arg("bitmap"), py::arg("srcRect"), py::arg("dstRect"), py::arg("followFlags")=B_FOLLOW_LEFT_TOP, py::arg("options")=B_TILE_BITMAP)
 .def("SetViewBitmap", py::overload_cast<const BBitmap *, uint32, uint32>(&BView::SetViewBitmap), "", py::arg("bitmap"), py::arg("followFlags")=B_FOLLOW_LEFT_TOP, py::arg("options")=B_TILE_BITMAP)
 .def("ClearViewBitmap", &BView::ClearViewBitmap, "")
@@ -378,12 +397,22 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("SetHighColor", py::overload_cast<uchar, uchar, uchar, uchar>(&BView::SetHighColor), "", py::arg("red"), py::arg("green"), py::arg("blue"), py::arg("alpha")=255)
 .def("HighColor", &BView::HighColor, "")
 .def("SetHighUIColor", &BView::SetHighUIColor, "", py::arg("which"), py::arg("tint")=B_NO_TINT)
-.def("HighUIColor", &BView::HighUIColor, "", py::arg("tint")=NULL)
+// FIXED (2026-10-25): float* tint out-param; now returns (color, tint).
+.def("HighUIColor", [](const BView& self) -> std::tuple<color_which, float> {
+	float tint = 0;
+	color_which which = self.HighUIColor(&tint);
+	return std::make_tuple(which, tint);
+}, "")
 .def("SetLowColor", py::overload_cast<rgb_color>(&BView::SetLowColor), "", py::arg("color"))
 .def("SetLowColor", py::overload_cast<uchar, uchar, uchar, uchar>(&BView::SetLowColor), "", py::arg("red"), py::arg("green"), py::arg("blue"), py::arg("alpha")=255)
 .def("LowColor", &BView::LowColor, "")
 .def("SetLowUIColor", &BView::SetLowUIColor, "", py::arg("which"), py::arg("tint")=B_NO_TINT)
-.def("LowUIColor", &BView::LowUIColor, "", py::arg("tint")=NULL)
+// FIXED (2026-10-25): float* tint out-param; now returns (color, tint).
+.def("LowUIColor", [](const BView& self) -> std::tuple<color_which, float> {
+	float tint = 0;
+	color_which which = self.LowUIColor(&tint);
+	return std::make_tuple(which, tint);
+}, "")
 .def("SetLineMode", &BView::SetLineMode, "", py::arg("lineCap"), py::arg("lineJoin"), py::arg("miterLimit")=B_DEFAULT_MITER_LIMIT)
 .def("LineJoinMode", &BView::LineJoinMode, "")
 .def("LineCapMode", &BView::LineCapMode, "")
@@ -467,21 +496,52 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("DrawTiledBitmap", &BView::DrawTiledBitmap, "", py::arg("aBitmap"), py::arg("viewRect"), py::arg("phase")=B_ORIGIN)
 .def("DrawChar", py::overload_cast<char>(&BView::DrawChar), "", py::arg("aChar"))
 .def("DrawChar", py::overload_cast<char, BPoint>(&BView::DrawChar), "", py::arg("aChar"), py::arg("location"))
-.def("DrawString", py::overload_cast<const char *, escapement_delta *>(&BView::DrawString), "", py::arg("string"), py::arg("delta")=NULL)
-.def("DrawString", py::overload_cast<const char *, BPoint, escapement_delta *>(&BView::DrawString), "", py::arg("string"), py::arg("location"), py::arg("delta")=NULL)
-.def("DrawString", py::overload_cast<const char *, int32, escapement_delta *>(&BView::DrawString), "", py::arg("string"), py::arg("length"), py::arg("delta")=NULL)
-.def("DrawString", py::overload_cast<const char *, int32, BPoint, escapement_delta *>(&BView::DrawString), "", py::arg("string"), py::arg("length"), py::arg("location"), py::arg("delta")=0)
+// FIXED (2026-10-25): escapement_delta* was an in/out param — a Python
+// caller could not supply it (unregistered pointer -> None -> NULL is
+// legal but the returned delta was lost). Now internal buffer, returns
+// the advanced delta (View.h:539-547; beta6 DrawString returns void).
+.def("DrawString", [](BView& self, const char* string) -> escapement_delta {
+	escapement_delta delta;
+	self.DrawString(string, &delta);
+	return delta;
+}, "", py::arg("string"))
+.def("DrawString", [](BView& self, const char* string, BPoint location) -> escapement_delta {
+	escapement_delta delta;
+	self.DrawString(string, location, &delta);
+	return delta;
+}, "", py::arg("string"), py::arg("location"))
+.def("DrawString", [](BView& self, const char* string, int32 length) -> escapement_delta {
+	escapement_delta delta;
+	self.DrawString(string, length, &delta);
+	return delta;
+}, "", py::arg("string"), py::arg("length"))
+.def("DrawString", [](BView& self, const char* string, int32 length, BPoint location) -> escapement_delta {
+	escapement_delta delta;
+	self.DrawString(string, length, location, &delta);
+	return delta;
+}, "", py::arg("string"), py::arg("length"), py::arg("location"))
 .def("DrawString", py::overload_cast<const char *, const BPoint *, int32>(&BView::DrawString), "", py::arg("string"), py::arg("locations"), py::arg("locationCount"))
 .def("DrawString", py::overload_cast<const char *, int32, const BPoint *, int32>(&BView::DrawString), "", py::arg("string"), py::arg("length"), py::arg("locations"), py::arg("locationCount"))
 .def("SetFont", &BView::SetFont, "", py::arg("font"), py::arg("mask")=B_FONT_ALL)
-.def("GetFont", &BView::GetFont, "", py::arg("font"))
+// FIXED (2026-10-25): out-param BFont* — now constructs internally and
+// returns the font (View.h GetFont).
+.def("GetFont", [](const BView& self) -> BFont {
+	BFont font;
+	self.GetFont(&font);
+	return font;
+}, "")
 .def("TruncateString", &BView::TruncateString, "", py::arg("in_out"), py::arg("mode"), py::arg("width"))
 .def("StringWidth", py::overload_cast<const char *>(&BView::StringWidth, py::const_), "", py::arg("string"))
 .def("StringWidth", py::overload_cast<const char *, int32>(&BView::StringWidth, py::const_), "", py::arg("string"), py::arg("length"))
 //.def("GetStringWidths", &BView::GetStringWidths, "", py::arg("stringArray"), py::arg("lengthArray"), py::arg("numStrings"), py::arg("widthArray"))
 .def("SetFontSize", &BView::SetFontSize, "", py::arg("size"))
 .def("ForceFontAliasing", &BView::ForceFontAliasing, "", py::arg("enable"))
-.def("GetFontHeight", &BView::GetFontHeight, "", py::arg("height"))
+// FIXED (2026-10-25): out-param font_height* — now returns the height.
+.def("GetFontHeight", [](const BView& self) -> font_height {
+	font_height height;
+	self.GetFontHeight(&height);
+	return height;
+}, "")
 .def("Invalidate", py::overload_cast<BRect>(&BView::Invalidate), "", py::arg("invalRect"))
 .def("Invalidate", py::overload_cast<const BRegion *>(&BView::Invalidate), "", py::arg("invalRegion"))
 .def("Invalidate", py::overload_cast<>(&BView::Invalidate), "")
@@ -523,7 +583,14 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("IsHidden", py::overload_cast<const BView *>(&BView::IsHidden, py::const_), "", py::arg("looking_from"))
 .def("Flush", &BView::Flush, "")
 .def("Sync", &BView::Sync, "")
-.def("GetPreferredSize", &BView::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were unusable from Python
+// (unregistered type -> None -> NULL-deref in the API). Now a tuple.
+.def("GetPreferredSize", [](BView& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BView::ResizeToPreferred, "")
 .def("ScrollBar", &BView::ScrollBar, "", py::arg("direction"))
 .def("ResolveSpecifier", &BView::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("form"), py::arg("property"))
@@ -547,7 +614,15 @@ py::class_<BView,PyBView,std::unique_ptr<BView, py::nodelete>>(m, "BView")
 .def("ExplicitPreferredSize", &BView::ExplicitPreferredSize, "")
 .def("ExplicitAlignment", &BView::ExplicitAlignment, "")
 .def("HasHeightForWidth", &BView::HasHeightForWidth, "")
-.def("GetHeightForWidth", &BView::GetHeightForWidth, "", py::arg("width"), py::arg("min"), py::arg("max"), py::arg("preferred"))
+// FIXED (2026-10-25): float* out-params (NULL-deref from Python); now a
+// (min, max, preferred) tuple.
+.def("GetHeightForWidth", [](BView& self, float width) -> std::tuple<float, float, float> {
+	float min = 0;
+	float max = 0;
+	float preferred = 0;
+	self.GetHeightForWidth(width, &min, &max, &preferred);
+	return std::make_tuple(min, max, preferred);
+}, "", py::arg("width"))
 .def("InvalidateLayout", &BView::InvalidateLayout, "", py::arg("descendants")=false)
 .def("SetLayout", &BView::SetLayout, "", py::arg("layout"))
 .def("GetLayout", &BView::GetLayout, "")

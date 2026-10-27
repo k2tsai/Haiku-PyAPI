@@ -12,8 +12,11 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(Size,m)
 {
-m.attr("B_SIZE_UNSET") = "- 2";
-m.attr("B_SIZE_UNLIMITED") = "1024 * 1024 * 1024";
+// FIXED (2026-10-25): these were bound as literal source strings ("- 2");
+// beta6 Size.h:13-14 defines them as `const float` (-2 and 1024*1024*1024)
+// — the BSize() ctor uses B_SIZE_UNSET for unset width/height.
+m.attr("B_SIZE_UNSET") = B_SIZE_UNSET;
+m.attr("B_SIZE_UNLIMITED") = B_SIZE_UNLIMITED;
 
 py::class_<BSize>(m, "BSize")
 .def(py::init(), "")

@@ -125,7 +125,14 @@ py::class_<BTextControl, PyBTextControl, BControl, std::unique_ptr<BTextControl,
 .def("SetModificationMessage", &BTextControl::SetModificationMessage, "", py::arg("message"))
 .def("ModificationMessage", &BTextControl::ModificationMessage, "")
 .def("SetAlignment", &BTextControl::SetAlignment, "", py::arg("label"), py::arg("text"))
-.def("GetAlignment", &BTextControl::GetAlignment, "", py::arg("_label"), py::arg("_text"))
+// FIXED (2026-10-25): alignment* out-params (pointer into static enum data
+// if called); now (label, text) tuple.
+.def("GetAlignment", [](const BTextControl& self) -> std::tuple<alignment, alignment> {
+	alignment label;
+	alignment text;
+	self.GetAlignment(&label, &text);
+	return std::make_tuple(label, text);
+}, "")
 .def("SetDivider", &BTextControl::SetDivider, "", py::arg("position"))
 .def("Divider", &BTextControl::Divider, "")
 .def("Draw", &BTextControl::Draw, "", py::arg("updateRect"))
@@ -136,7 +143,14 @@ py::class_<BTextControl, PyBTextControl, BControl, std::unique_ptr<BTextControl,
 .def("FrameMoved", &BTextControl::FrameMoved, "", py::arg("newPosition"))
 .def("FrameResized", &BTextControl::FrameResized, "", py::arg("newWidth"), py::arg("newHeight"))
 .def("WindowActivated", &BTextControl::WindowActivated, "", py::arg("active"))
-.def("GetPreferredSize", &BTextControl::GetPreferredSize, "", py::arg("_width"), py::arg("_height"))
+// FIXED (2026-10-25): float* out-params were NULL-deref hazards from Python;
+// now returns (width, height).
+.def("GetPreferredSize", [](BTextControl& self) -> std::tuple<float, float> {
+	float width = 0;
+	float height = 0;
+	self.GetPreferredSize(&width, &height);
+	return std::make_tuple(width, height);
+}, "")
 .def("ResizeToPreferred", &BTextControl::ResizeToPreferred, "")
 .def("MessageReceived", &BTextControl::MessageReceived, "", py::arg("message"))
 .def("ResolveSpecifier", &BTextControl::ResolveSpecifier, "", py::arg("message"), py::arg("index"), py::arg("specifier"), py::arg("what"), py::arg("property"))

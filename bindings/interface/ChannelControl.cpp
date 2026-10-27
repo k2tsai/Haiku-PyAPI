@@ -70,11 +70,29 @@ py::class_<BChannelControl,PyBChannelControl, BControl>(m, "BChannelControl")
 .def("SetValue", py::overload_cast<int32, int32, const int32*>(&BChannelControl::SetValue), "", py::arg("fromChannel"), py::arg("channelCount"), py::arg("values"))
 .def("SetAllValue", &BChannelControl::SetAllValue, "", py::arg("values"))
 .def("SetLimitsFor", py::overload_cast<int32, int32, int32>(&BChannelControl::SetLimitsFor), "", py::arg("channel"), py::arg("minimum"), py::arg("maximum"))
-.def("GetLimitsFor", py::overload_cast<int32, int32*, int32*>(&BChannelControl::GetLimitsFor, py::const_), "", py::arg("channel"), py::arg("_minimum"), py::arg("_maximum"))
+// FIXED (2026-10-25): int32* out-params; now (minimum, maximum, status).
+.def("GetLimitsFor", [](const BChannelControl& self, int32 channel) -> std::tuple<int32, int32, status_t> {
+	int32 minimum = 0;
+	int32 maximum = 0;
+	status_t result = self.GetLimitsFor(channel, &minimum, &maximum);
+	return std::make_tuple(minimum, maximum, result);
+}, "", py::arg("channel"))
 .def("SetLimitsFor", py::overload_cast<int32, int32, const int32*, const int32*>(&BChannelControl::SetLimitsFor), "", py::arg("fromChannel"), py::arg("channelCount"), py::arg("minima"), py::arg("maxima"))
-.def("GetLimitsFor", py::overload_cast<int32, int32, int32*, int32*>(&BChannelControl::GetLimitsFor, py::const_), "", py::arg("fromChannel"), py::arg("channelCount"), py::arg("minima"), py::arg("maxima"))
+// FIXED (2026-10-25): int32* out-ARRAYS; now (minima, maxima, status).
+.def("GetLimitsFor", [](const BChannelControl& self, int32 fromChannel, int32 channelCount) -> std::tuple<std::vector<int32>, std::vector<int32>, status_t> {
+	std::vector<int32> minima(channelCount);
+	std::vector<int32> maxima(channelCount);
+	status_t result = self.GetLimitsFor(fromChannel, channelCount, minima.data(), maxima.data());
+	return std::make_tuple(minima, maxima, result);
+}, "", py::arg("fromChannel"), py::arg("channelCount"))
 .def("SetLimits", &BChannelControl::SetLimits, "", py::arg("minimum"), py::arg("maximum"))
-.def("GetLimits", &BChannelControl::GetLimits, "", py::arg("_minimum"), py::arg("_maximum"))
+// FIXED (2026-10-25): int32* out-params; now (minimum, maximum, status).
+.def("GetLimits", [](const BChannelControl& self) -> std::tuple<int32, int32, status_t> {
+	int32 minimum = 0;
+	int32 maximum = 0;
+	status_t result = self.GetLimits(&minimum, &maximum);
+	return std::make_tuple(minimum, maximum, result);
+}, "")
 //.def("SupportsIndividualLimits", &BChannelControl::SupportsIndividualLimits, "")
 .def("SetLimitLabels", &BChannelControl::SetLimitLabels, "", py::arg("minLabel"), py::arg("maxLabel"))
 .def("MinLimitLabel", &BChannelControl::MinLimitLabel, "")

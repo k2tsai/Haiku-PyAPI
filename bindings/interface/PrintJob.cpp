@@ -52,10 +52,23 @@ py::class_<BPrintJob>(m, "BPrintJob")
 .def("IsSettingsMessageValid", &BPrintJob::IsSettingsMessageValid, "", py::arg("archive"))
 .def("PaperRect", &BPrintJob::PaperRect, "")
 .def("PrintableRect", &BPrintJob::PrintableRect, "")
-.def("GetResolution", &BPrintJob::GetResolution, "", py::arg("xDPI"), py::arg("yDPI"))
+// FIXED (2026-10-25): int32* out-params; now (xDPI, yDPI) tuple.
+.def("GetResolution", [](BPrintJob& self) -> std::tuple<int32, int32> {
+	int32 xDPI = 0;
+	int32 yDPI = 0;
+	self.GetResolution(&xDPI, &yDPI);
+	return std::make_tuple(xDPI, yDPI);
+}, "")
 .def("FirstPage", &BPrintJob::FirstPage, "")
 .def("LastPage", &BPrintJob::LastPage, "")
-.def("PrinterType", &BPrintJob::PrinterType, "", py::arg("type")=NULL)
+// FIXED (2026-10-25): void* type was a caller-allocated string buffer
+// out-param (unusable from Python); now an internal buffer, returns
+// (type string, type code).
+.def("PrinterType", [](const BPrintJob& self) -> std::tuple<std::string, int32> {
+	char buffer[256];
+	int32 code = self.PrinterType(buffer);
+	return std::make_tuple(std::string(buffer), code);
+}, "")
 ;
 
 

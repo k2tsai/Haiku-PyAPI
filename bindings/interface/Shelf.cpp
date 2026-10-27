@@ -42,13 +42,29 @@ py::class_<BShelf, BHandler>(m, "BShelf")
 .def("SetTypeEnforced", &BShelf::SetTypeEnforced, "", py::arg("state"))
 .def("SetSaveLocation", py::overload_cast<BDataIO *>(&BShelf::SetSaveLocation), "", py::arg("stream"))
 .def("SetSaveLocation", py::overload_cast<const entry_ref *>(&BShelf::SetSaveLocation), "", py::arg("ref"))
-.def("SaveLocation", &BShelf::SaveLocation, "", py::arg("ref"))
+// FIXED (2026-10-25): entry_ref* ref out-param + the returned BDataIO* is
+// allocated by the API (Python now owns it, per pybind automatic policy).
+.def("SaveLocation", [](const BShelf& self) -> std::tuple<BDataIO*, entry_ref> {
+	entry_ref ref;
+	BDataIO* stream = self.SaveLocation(&ref);
+	return std::make_tuple(stream, ref);
+}, "")
 .def("AddReplicant", &BShelf::AddReplicant, "", py::arg("archive"), py::arg("location"))
 .def("DeleteReplicant", py::overload_cast<BView *>(&BShelf::DeleteReplicant), "", py::arg("replicant"))
 .def("DeleteReplicant", py::overload_cast<BMessage *>(&BShelf::DeleteReplicant), "", py::arg("archive"))
 .def("DeleteReplicant", py::overload_cast<int>(&BShelf::DeleteReplicant), "", py::arg("index"))
 .def("CountReplicants", &BShelf::CountReplicants, "")
-.def("ReplicantAt", &BShelf::ReplicantAt, "", py::arg("index"), py::arg("view")=NULL, py::arg("uid")=NULL, py::arg("perr")=NULL)
+// FIXED (2026-10-25): BView**/uint32*/status_t* out-params; now
+// (archive, view, uid, error). The archive BMessage* is allocated by the
+// API (Python owns it); the view is the live replicant (no ownership).
+.def("ReplicantAt", [](const BShelf& self, int32 index) -> std::tuple<BMessage*, py::object, uint32, status_t> {
+	BView* view = nullptr;
+	uint32 uid = 0;
+	status_t error = B_OK;
+	BMessage* archive = self.ReplicantAt(index, &view, &uid, &error);
+	return std::make_tuple(archive,
+		py::cast(view, py::return_value_policy::reference), uid, error);
+}, "", py::arg("index"))
 .def("IndexOf", py::overload_cast<const BView *>(&BShelf::IndexOf), "", py::arg("replicantView"))
 .def("IndexOf", py::overload_cast<const BMessage *>(&BShelf::IndexOf), "", py::arg("archive"))
 .def("IndexOf", py::overload_cast<unsigned int>(&BShelf::IndexOf), "", py::arg("id"))
