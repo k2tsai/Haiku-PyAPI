@@ -70,18 +70,15 @@ py::class_<BUrl, BArchivable>(m, "BUrl")
 .def("OpenWithPreferredApplication", &BUrl::OpenWithPreferredApplication, "", py::arg("onProblemAskUser")=true)
 .def("Archive", &BUrl::Archive, "", py::arg("into"), py::arg("deep")=true)
 .def_static("Instantiate", &BUrl::Instantiate, "", py::arg("archive"))
-.def("__eq__", [](BUrl& self) {
-    BUrl  other;
-    bool r = self.operator==(other);
-    return std::make_tuple(r,other);
-}
-, "")
-.def("__ne__", [](BUrl& self) {
-    BUrl  other;
-    bool r = self.operator!=(other);
-    return std::make_tuple(r,other);
-}
-, "")
+// beta6 (Url.h:95): bool operator==(BUrl& other) const / operator!= — the
+// old binding compared against a throwaway default-constructed BUrl, which
+// made every `==` false and returned a nonsense (bool, BUrl) tuple.
+.def("__eq__", [](BUrl& self, BUrl& other) -> bool {
+    return self.operator==(other);
+}, "")
+.def("__ne__", [](BUrl& self, BUrl& other) -> bool {
+    return self.operator!=(other);
+}, "")
 .def("__copy__", py::overload_cast<const BUrl &>(&BUrl::operator=), "", py::arg("other"))
 .def("__copy__", py::overload_cast<const BString &>(&BUrl::operator=), "", py::arg("string"))
 .def("__copy__", py::overload_cast<const char *>(&BUrl::operator=), "", py::arg("string"))

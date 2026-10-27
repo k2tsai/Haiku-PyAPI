@@ -19,6 +19,28 @@ class PyBJob : public BJob{
         }
 };
 
+// beta6 (Job.h): BJobStateListener callbacks are virtual with no-op default
+// bodies — without a trampoline, Python overrides were silently dead.
+class PyBJobStateListener : public BJobStateListener {
+public:
+	using BJobStateListener::BJobStateListener;
+	void JobStarted(BJob* job) override {
+		PYBIND11_OVERLOAD(void, BJobStateListener, JobStarted, job);
+	}
+	void JobProgress(BJob* job) override {
+		PYBIND11_OVERLOAD(void, BJobStateListener, JobProgress, job);
+	}
+	void JobSucceeded(BJob* job) override {
+		PYBIND11_OVERLOAD(void, BJobStateListener, JobSucceeded, job);
+	}
+	void JobFailed(BJob* job) override {
+		PYBIND11_OVERLOAD(void, BJobStateListener, JobFailed, job);
+	}
+	void JobAborted(BJob* job) override {
+		PYBIND11_OVERLOAD(void, BJobStateListener, JobAborted, job);
+	}
+};
+
 
 PYBIND11_MODULE(Job, m)
 {
@@ -31,7 +53,8 @@ py::enum_<BJobState>(m, "BJobState", "")
 .value("B_JOB_STATE_ABORTED", BJobState::B_JOB_STATE_ABORTED, "")
 .export_values();
 
-py::class_<BJobStateListener>(m, "BJobStateListener")
+py::class_<BJobStateListener, PyBJobStateListener>(m, "BJobStateListener")
+.def(py::init<>(), "")
 .def("JobStarted", &BJobStateListener::JobStarted, "", py::arg("job"))
 .def("JobProgress", &BJobStateListener::JobProgress, "", py::arg("job"))
 .def("JobSucceeded", &BJobStateListener::JobSucceeded, "", py::arg("job"))

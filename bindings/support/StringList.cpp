@@ -63,7 +63,7 @@ py::class_<BStringList, BFlattenable>(m, "BStringList")
 .def("Remove", py::overload_cast<int32, int32>(&BStringList::Remove), "", py::arg("index"), py::arg("count"))
 .def("Replace", &BStringList::Replace, "", py::arg("index"), py::arg("string"))
 .def("MakeEmpty", &BStringList::MakeEmpty, "")
-.def("Sort", &BStringList::Sort, "", py::arg("ignoreCase")=false)
+.def("Sort", py::overload_cast<bool>(&BStringList::Sort), "", py::arg("ignoreCase")=false)
 .def("Swap", &BStringList::Swap, "", py::arg("indexA"), py::arg("indexB"))
 .def("Move", &BStringList::Move, "", py::arg("fromIndex"), py::arg("toIndex"))
 .def("StringAt", &BStringList::StringAt, "", py::arg("index"))
@@ -93,8 +93,34 @@ py::class_<BStringList, BFlattenable>(m, "BStringList")
 .def("TypeCode", &BStringList::TypeCode, "")
 .def("AllowsTypeCode", &BStringList::AllowsTypeCode, "", py::arg("code"))
 .def("FlattenedSize", &BStringList::FlattenedSize, "")
-.def("Flatten", &BStringList::Flatten, "", py::arg("buffer"), py::arg("size"))
-.def("Unflatten", &BStringList::Unflatten, "", py::arg("code"), py::arg("buffer"), py::arg("size"))
+// beta6 (StringList.h:83): Flatten(void* buffer, ssize_t size) is an OUT
+// parameter on caller storage — never bind the raw void*. Safe form mirrors
+// the BFlattenable module: allocate via FlattenedSize(), return (status, bytes).
+.def("Flatten", [](const BStringList& self) {
+	ssize_t size = self.FlattenedSize();
+	std::vector<char> buffer(size > 0 ? size : 1);
+	status_t status = self.Flatten(buffer.data(), size);
+	return std::make_tuple(status, py::bytes(buffer.data(), size));
+}, "")
+.def("FlattenToBytes", [](const BStringList& self) {
+	ssize_t size = self.FlattenedSize();
+	std::vector<char> buffer(size > 0 ? size : 1);
+	status_t status = self.Flatten(buffer.data(), size);
+	return std::make_tuple(py::bytes(buffer.data(), size), status);
+}, "")
+// beta6 (StringList.h:84): Unflatten(type_code, const void*, ssize_t)
+.def("Unflatten", [](BStringList& self, type_code code, py::bytes data) {
+	py::buffer buf(data);
+	py::buffer_info info = buf.request();
+	status_t status = self.Unflatten(code, info.ptr, (ssize_t)info.size);
+	return status;
+}, "", py::arg("code"), py::arg("data"))
+.def("UnflattenFromBytes", [](BStringList& self, type_code code, py::bytes data) {
+	py::buffer buf(data);
+	py::buffer_info info = buf.request();
+	status_t status = self.Unflatten(code, info.ptr, (ssize_t)info.size);
+	return status;
+}, "", py::arg("code"), py::arg("data"))
 ;
 
 //m.def("__ne__", &operator!=, "", py::arg("other"));

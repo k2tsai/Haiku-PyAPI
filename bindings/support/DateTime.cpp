@@ -62,7 +62,7 @@ py::class_<BDate>(m, "BDate")
 .def(py::init<int32, int32, int32>(), "", py::arg("year"), py::arg("month"), py::arg("day"))
 .def(py::init<time_t, time_type>(), "", py::arg("time"), py::arg("type")=B_LOCAL_TIME)
 .def(py::init<const BMessage *>(), "", py::arg("archive"))
-.def("Archive", &BDate::Archive, "", py::arg("int32o"))
+.def("Archive", &BDate::Archive, "", py::arg("into"))
 //.def("IsValid", py::overload_cast<>(&BDate::IsValid, py::const_), "") // overloading a method with both static and instance methods is not supported;
 .def_static("IsValid", py::overload_cast<const BDate &>(&BDate::IsValid), "", py::arg("date"))
 .def_static("IsValid", py::overload_cast<int32, int32, int32>(&BDate::IsValid), "", py::arg("year"), py::arg("month"), py::arg("day"))
@@ -70,7 +70,13 @@ py::class_<BDate>(m, "BDate")
 .def("Date", &BDate::Date, "")
 .def("SetDate", py::overload_cast<const BDate &>(&BDate::SetDate), "", py::arg("date"))
 .def("SetDate", py::overload_cast<int32, int32, int32>(&BDate::SetDate), "", py::arg("year"), py::arg("month"), py::arg("day"))
-.def("GetDate", &BDate::GetDate, "", py::arg("year"), py::arg("month"), py::arg("day"))
+// beta6 (DateTime.h:112): void GetDate(int32* year, int32* month, int32* day)
+// — three out-params; Pythonic form returns a (year, month, day) tuple.
+.def("GetDate", [](const BDate& self) {
+	int32 year = 0, month = 0, day = 0;
+	self.GetDate(&year, &month, &day);
+	return py::make_tuple(year, month, day);
+}, "")
 .def("AddDays", &BDate::AddDays, "", py::arg("days"))
 .def("AddYears", &BDate::AddYears, "", py::arg("years"))
 .def("AddMonths", &BDate::AddMonths, "", py::arg("months"))
