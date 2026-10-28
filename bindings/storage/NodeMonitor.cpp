@@ -61,16 +61,19 @@ m.attr("B_STAT_CREATION_TIME") = 0x0040;
 m.attr("B_STAT_CHANGE_TIME") = 0x0080;
 m.attr("B_STAT_INTERIM_UPDATE") = 0x1000;
 
-// TODO (feature miss): the B_NODE_MONITOR *notification opcodes* are not
-// exported. NodeMonitor.h:36-42 defines them as #defines:
-//   B_ENTRY_CREATED 1, B_ENTRY_REMOVED 2, B_ENTRY_MOVED 3,
-//   B_STAT_CHANGED 4, B_ATTR_CHANGED 5, B_DEVICE_MOUNTED 6,
-//   B_DEVICE_UNMOUNTED 7
-// A handler dispatching on a B_NODE_MONITOR message needs these to decode its
-// `opcode` field (see headers/private/storage/NodeMonitorHandler.cpp). Until
-// added — as m.attr(...) like the B_WATCH_*/B_STAT_* flags above; they are
-// #defines, so .value() cannot name them the way AppDefs.cpp does for
-// B_NODE_MONITOR — consumers must hardcode them (e.g. haiku-llm's
-// files_provider folder-watcher). B_NODE_MONITOR ('NDMN') itself IS exported:
-// bindings/app/AppDefs.cpp.
+// FIXED (2026-10-28): the B_NODE_MONITOR *notification opcodes* were a
+// documented feature miss (TODO 2026-10-27). They are #defines in
+// NodeMonitor.h:36-42, so literal ints via m.attr — the enum-attr defect
+// class (pybind 3.x cannot cast unregistered enum constants at attr time).
+// A handler dispatching on a B_NODE_MONITOR message decodes `opcode` with
+// these (see headers/private/storage/NodeMonitorHandler.cpp). B_NODE_MONITOR
+// ('NDMN') itself is exported by bindings/app/AppDefs.cpp. Paired rows:
+// constants:NodeMonitor (generated table, regenerated 2026-10-28).
+m.attr("B_ENTRY_CREATED") = 1;
+m.attr("B_ENTRY_REMOVED") = 2;
+m.attr("B_ENTRY_MOVED") = 3;
+m.attr("B_STAT_CHANGED") = 4;
+m.attr("B_ATTR_CHANGED") = 5;
+m.attr("B_DEVICE_MOUNTED") = 6;
+m.attr("B_DEVICE_UNMOUNTED") = 7;
 }
