@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 #
-# common.py — shared harness for the Haiku-PyAPI binding tests (guest).
+# common.py — shared harness for the Haiku-PyAPI binding tests (run where the
+# bindings are built).
 #
 # Tests run against the SYMLINK FARM (/boot/home/prefixrun/Be -> the shared
 # build dir), NOT /boot/home/Be — so a rebuilt .so is picked up without a
 # re-copy, and tests never shadow each other. Import order matters (base
 # modules first): use closure() for anything with cross-module bases.
 #
-# No pytest on the guest (no pip): each test file is a plain script that
-# prints JSON result lines + an exit code; run_all.py aggregates.
+# No pytest in the build environment (no pip): each test file is a plain
+# script printing JSON result lines + an exit code; run_all.py aggregates.
 #
 import importlib
 import json
@@ -24,10 +25,10 @@ import types
 #   BINDTESTS_ENV        alternate .env location (default: ./.env)
 #   PYAPI_BINDINGS       bindings source tree (selectmods analysis)
 #   PYAPI_STOCK_INIT     stock import-order file
-#   PYAPI_BUDGET         guest budget.py for selectmods --budget
+#   PYAPI_BUDGET         budget.py for selectmods --budget
 #   PYAPI_SELECTMODS_DIR fallback dir for selectmods.py
 #
-# .env support: stdlib-only loader (the guest has no pip/python-dotenv).
+# .env support: stdlib-only loader (no pip/python-dotenv in the build env).
 # Precedence is the dotenv standard: values already in the environment
 # ALWAYS win over .env entries.
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -60,16 +61,43 @@ SCRATCH = os.environ.get("BINDTESTS_SCRATCH", os.path.join(HERE, "scratch"))
 os.makedirs(SCRATCH, exist_ok=True)
 
 RESULTS = []
+ABSENT = set()          # module names whose .so isn't in FARM (not built)
+
+
+class Absent(Exception):
+    """a row used a module that didn't build (an _Absent sentinel) → ABSENT."""
+    def __init__(self, name):
+        self.name = name
+        super().__init__(name)
+
+
+class _Absent:
+    """sentinel bound for a name whose module didn't build (see bind_names);
+    using it — calling, attribute access, comparing, hashing — raises Absent so
+    the row is reported ABSENT, not a crash or a silent mis-comparison. The
+    dunders are defined explicitly (special methods are looked up on the type,
+    not via __getattr__)."""
+    def __init__(self, name): self.name = name
+    def __call__(self, *a, **k): raise Absent(self.name)
+    def __getattr__(self, k): raise Absent(self.name)
+    def __eq__(self, other): raise Absent(self.name)
+    def __ne__(self, other): raise Absent(self.name)
+    def __hash__(self): raise Absent(self.name)
 
 
 def load(mods):
-    """Seed an empty Be package over the farm; import modules in order;
-    bind their public names into the Be namespace (like `from .X import *`).
-    -> the Be package module."""
+    """Seed an empty Be package over the farm; import each module that has a
+    built `.so` — a module that didn't build is recorded in ABSENT (not
+    imported, not fatal). -> the Be package (present modules' public names)."""
+    global ABSENT
+    ABSENT = set()
     pkg = types.ModuleType("Be")
     pkg.__path__ = [FARM]
     sys.modules["Be"] = pkg
     for m in mods:
+        if not os.path.isfile(os.path.join(FARM, m + ".so")):
+            ABSENT.add(m)
+            continue
         mod = importlib.import_module("Be." + m)
         for k, v in vars(mod).items():
             if not k.startswith("_"):
@@ -77,12 +105,24 @@ def load(mods):
     return pkg
 
 
+def bind_names(Be, names):
+    """Bind a whitespace-separated list of `names` for the caller: present
+    ones from Be, absent ones as _Absent sentinels (so a module that didn't
+    build doesn't crash the file's import). Use:
+        globals().update(common.bind_names(Be, "BNode BFile B_OK ..."))"""
+    return {n: (getattr(Be, n) if hasattr(Be, n) else _Absent(n)) for n in names.split()}
+
+
+def absent(name, why):
+    RESULTS.append({"test": name, "status": "ABSENT", "detail": why})
+
+
 def closure(*wanted):
-    """selectmods.analyze() dependency closure, stock-ordered (guest tool).
+    """selectmods.analyze() dependency closure, stock-ordered.
     `wanted` may be module names OR C++ class names (resolved via the
     analyzer's type map)."""
-    # selectmods sits with the suite; fall back to the traditional guest
-    # location (or PYAPI_SELECTMODS_DIR) for deployments without the copy.
+    # selectmods sits with the suite; fall back to the traditional location
+    # (or PYAPI_SELECTMODS_DIR) for deployments without the copy.
     for d in (HERE, os.environ.get("PYAPI_SELECTMODS_DIR", "/boot/home")):
         if d not in sys.path:
             sys.path.insert(0, d)
@@ -162,10 +202,14 @@ def import_strategy(modules):
 
 
 def check(name, fn):
-    """Run one assertion group; record {test, status, detail}."""
+    """Run one assertion group; record {test, status, detail}. A row that
+    touches a module that didn't build (an _Absent sentinel) raises Absent →
+    recorded ABSENT, so one unbuilt module doesn't take down the rest."""
     try:
         detail = fn()
         RESULTS.append({"test": name, "status": "PASS", "detail": detail or ""})
+    except Absent as e:
+        absent(name, "not built: %s" % e.name)
     except AssertionError as e:
         RESULTS.append({"test": name, "status": "FAIL", "detail": str(e)[:300]})
     except BaseException as e:
@@ -179,14 +223,13 @@ def skip(name, why):
 
 def report(suite):
     for r in RESULTS:
+        r = dict(r)
+        r["detail"] = " ".join(str(r.get("detail", "")).split())  # single-line
         print("JSON " + json.dumps({"suite": suite, **r}))
-    nfail = sum(1 for r in RESULTS if r["status"] == "FAIL")
-    nerr = sum(1 for r in RESULTS if r["status"] == "ERROR")
-    npass = sum(1 for r in RESULTS if r["status"] == "PASS")
-    print("SUMMARY %s: %d pass, %d fail, %d error, %d skip" %
-          (suite, npass, nfail, nerr,
-           sum(1 for r in RESULTS if r["status"] == "SKIP")))
-    return 1 if (nfail or nerr) else 0
+    c = lambda s: sum(1 for r in RESULTS if r["status"] == s)
+    print("SUMMARY %s: %d pass, %d fail, %d error, %d absent, %d skip" %
+          (suite, c("PASS"), c("FAIL"), c("ERROR"), c("ABSENT"), c("SKIP")))
+    return 1 if (c("FAIL") or c("ERROR")) else 0
 
 
 def scratch_file(name, data=b""):

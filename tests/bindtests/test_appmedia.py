@@ -31,9 +31,9 @@ Be = common.load(common.closure(
     "Errors", "Clipboard", "Message", "MediaDefs", "MediaDecoder",
     "TimeCode", "MailMessage", "MailAttachment", "DataIO",
     "TypeConstants"))
-from Be import B_RAW_TYPE
-from Be import (BMessage, B_OK, BTimeCode, BMediaDecoder,
-                BEmailMessage, BSimpleMailAttachment)
+globals().update(common.bind_names(Be,
+    "B_RAW_TYPE BMessage B_OK BTimeCode BMediaDecoder BEmailMessage "
+    "BSimpleMailAttachment"))
 
 
 class Skip(Exception):
@@ -46,6 +46,8 @@ def check_skip(name, fn):
         fn()
     except Skip as e:
         common.skip(name, str(e)[:200])
+    except common.Absent as e:
+        common.absent(name, "not built: %s" % e.name)
     except AssertionError as e:
         common.check(name, lambda d=str(e)[:300]:
                      (_ for _ in ()).throw(AssertionError(d)))

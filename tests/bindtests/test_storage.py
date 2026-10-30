@@ -14,16 +14,18 @@ import sys
 import common
 
 Be = common.load(common.closure("Errors", "TypeConstants", "StorageDefs",
+                                "Handler", "Looper",
                                 "BNode", "BFile", "BEntry", "BPath",
                                 "BEntryList", "BQuery", "BVolume",
                                 "BDirectory", "BNodeInfo", "BAppFileInfo",
                                 "BPathFinder", "BSize", "stat", "MimeType",
-                                "BMimeType"))
-from Be import (BNode, BFile, BEntry, BPath, BEntryList, BQuery, BVolume,
-                BDirectory, BNodeInfo, BAppFileInfo, BPathFinder, BSize,
-                BMimeType, entry_ref, B_OK, B_RAW_TYPE, B_INT32_TYPE,
-                B_INT64_TYPE, B_FLOAT_TYPE, B_DOUBLE_TYPE, B_CREATE_FILE,
-                B_READ_ONLY, B_READ_WRITE, B_GT, B_SIZE_UNSET, B_SIZE_UNLIMITED)
+                                "BMimeType", "NodeMonitor"))
+globals().update(common.bind_names(Be,
+    "BNode BFile BEntry BPath BEntryList BQuery BVolume BDirectory BNodeInfo "
+    "BAppFileInfo BPathFinder BSize BMimeType entry_ref node_ref BLooper "
+    "B_OK B_RAW_TYPE B_INT32_TYPE B_INT64_TYPE B_FLOAT_TYPE B_DOUBLE_TYPE "
+    "B_CREATE_FILE B_READ_ONLY B_READ_WRITE B_GT B_WATCH_DIRECTORY "
+    "B_SIZE_UNSET B_SIZE_UNLIMITED watch_node stop_watching"))
 
 P = common.scratch_file("storage_test.dat")
 
@@ -188,9 +190,30 @@ def t_query_size():
 common.check("query:size-indexed", t_query_size)
 
 def t_query_attr_indexed():
-    # our M2d indexes exist on the volume: the bmessage corpus is indexed
-    n = _qcount("cognis:embedding.dim > 0")
-    assert n >= 1, "dim>0 found %d (index missing or empty?)" % n
+    # An attribute predicate matches only nodes whose volume carries the
+    # B+ index for that attr name (kernel auto-maintains it on every attr
+    # write). Self-contained: create the index, write the attr, query, then
+    # clean up — the old version queried the M2d PoC's cognis:embedding.*
+    # corpus, which is ad-hoc volume state absent on a fresh install.
+    import ctypes
+    libroot = ctypes.CDLL("libroot.so")
+    create, remove = libroot.fs_create_index, libroot.fs_remove_index
+    create.argtypes = [ctypes.c_uint32, ctypes.c_char_p,
+                       ctypes.c_uint32, ctypes.c_uint32]
+    create.restype = ctypes.c_int
+    remove.argtypes = [ctypes.c_uint32, ctypes.c_char_p]
+    remove.restype = ctypes.c_int
+    dev = os.stat(common.SCRATCH).st_dev
+    assert create(dev, b"bindtest:dim", B_INT32_TYPE, 0) == B_OK
+    node = BNode()
+    node.SetTo(P)
+    assert node.WriteAttr("bindtest:dim", B_INT32_TYPE, 0,
+                          struct.pack("<i", 1)) == 4
+    n = _qcount("bindtest:dim > 0")
+    assert n >= 1, "indexed attr predicate found %d" % n
+    node.RemoveAttr("bindtest:dim")
+    node.Unset()
+    assert remove(dev, b"bindtest:dim") == B_OK
 common.check("query:attr-indexed", t_query_attr_indexed)
 
 def t_query_attr_unindexed():
@@ -358,8 +381,8 @@ common.check("storage:BVolume.GetName", t_volume_getname)
 
 def t_volume_geticon_bound():
     # STANDARD: the raw-icon GetIcon(size, type) overload returns
-    # (status, ndarray) via py::array — numpy is NOT installed on this
-    # guest (no pip), so the call itself is skipped; pinned instead: the
+    # (status, ndarray) via py::array — numpy is NOT installed here (no pip),
+    # so the call itself is skipped; pinned instead: the
     # overload is bound on the class and the module imports cleanly (this
     # is what the static-linkage GetIcon_toArray fix guarantees).
     import Be.Volume  # re-import is a no-op; the first import already proved it
@@ -514,6 +537,21 @@ def t_size_unlimited():
     # STANDARD: B_SIZE_UNLIMITED is the C const 1024*1024*1024 (Size.h:14).
     assert B_SIZE_UNLIMITED == 1024 * 1024 * 1024, repr(B_SIZE_UNLIMITED)
 common.check("storage:Size.B_SIZE_UNLIMITED", t_size_unlimited)
+
+def t_watch_node_short_forms():
+    # Pairs the 2026-10-27 NodeMonitor.cpp fix: `py::arg("looper")=NULL`
+    # stored the default as int 0 -> the short handler forms were
+    # permanently uncallable. Now: watch_node(node, flags, handler) is
+    # 3-arg; stop_watching(handler) is 2-arg. Headless-safe (BLooper
+    # target, no app needed to register the watch).
+    s = os.stat(common.SCRATCH)
+    nref = node_ref(s.st_dev, s.st_ino)   # Node-module type (double-registered)
+    lp = BLooper()   # 0-arg form (2026-10-27 fix: NULL-default was uncallable)
+    st = watch_node(nref, B_WATCH_DIRECTORY, lp)      # short form
+    assert st == B_OK, "watch_node 3-arg = %d" % st
+    st = stop_watching(lp)                            # short form
+    assert st == B_OK, "stop_watching 2-arg = %d" % st
+common.check("storage:watch_node.short-forms", t_watch_node_short_forms)
 
 if os.path.exists(P):
     os.remove(P)

@@ -29,13 +29,11 @@ mods = common.closure("BString", "BStringList", "BList", "BPoint",
                       "BDate", "Flattenable", "Message", "Path",
                       "parsedate", "UTF8", "TLS", "TypeConstants", "Errors")
 Be = common.load(mods)
-from Be import (BString, BStringList, BList, BPoint, BAffineTransform,
-                BMemoryIO, BMallocIO, BBufferedDataIO, BBufferIO, BUrl,
-                BJob, BJobStateListener, BDate, BFlattenable,
-                B_JOB_STATE_SUCCEEDED, B_OK, B_ERROR,
-                B_NO_MEMORY, B_BAD_INDEX, B_APP_ERROR_BASE,
-                B_STORAGE_ERROR_BASE,
-                B_RAW_TYPE, B_INT32_TYPE, B_STRING_TYPE)
+globals().update(common.bind_names(Be,
+    "BString BStringList BList BPoint BAffineTransform BMemoryIO BMallocIO "
+    "BBufferedDataIO BBufferIO BUrl BJob BJobStateListener BDate BFlattenable "
+    "B_JOB_STATE_SUCCEEDED B_OK B_ERROR B_NO_MEMORY B_BAD_INDEX "
+    "B_APP_ERROR_BASE B_STORAGE_ERROR_BASE B_RAW_TYPE B_INT32_TYPE B_STRING_TYPE"))
 
 
 # ---------------------------------------------------------------- BString

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# select.py — dependency-aware curated `Be` import-set builder (guest-side).
+# select.py — dependency-aware curated `Be` import-set builder.
 #
 # WHY: the CPython 3.14 TSS-key pool (~507 usable) limits a process to
 # ~120 binding modules (each pybind11 v3 module costs ~4 keys). So services
@@ -11,7 +11,7 @@
 # py::class_/py::enum_), plus the empirically-observed default-arg deps
 # (from the fullmap solo survey — see the DEFAULT_ARG_DEPS table below).
 #
-# Usage (guest):
+# Usage:
 #   python3 select.py BFile BEntry BPath BVolumeRoster        # closure + order
 #   python3 select.py BFile BEntry --emit                     # print init lines
 #   python3 select.py --budget BFile BEntry ...               # also TSS-budget it
@@ -22,7 +22,7 @@ import os, re, subprocess, sys
 #   PYAPI_BINDINGS    bindings source tree for the static dep analysis
 #                     (host: ~/src/haiku-pyapi-dev/bindings)
 #   PYAPI_STOCK_INIT  the stock import-order file (defaults to $PYAPI_BINDINGS/__init__.py)
-#   PYAPI_BUDGET      the guest budget.py used by --budget (skipped if absent)
+#   PYAPI_BUDGET      the budget.py used by --budget (skipped if absent)
 BINDINGS = os.environ.get("PYAPI_BINDINGS", "/boot/home/Haiku-PyAPI/bindings")
 STOCK_INIT = os.environ.get("PYAPI_STOCK_INIT", BINDINGS + "/__init__.py")
 BUDGET = os.environ.get("PYAPI_BUDGET", "/boot/home/budget.py")

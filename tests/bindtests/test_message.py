@@ -12,8 +12,8 @@ import common
 Be = common.load(["Errors", "AppDefs", "TypeConstants", "String", "Handler",
                   "Looper", "Message", "Messenger", "Roster", "Application"])
 # note: B_FAILED was removed in beta6 — assert `st != B_OK` instead
-from Be import (BMessage, B_OK, B_RAW_TYPE, B_INT32_TYPE,
-                B_INT64_TYPE, B_STRING_TYPE)
+globals().update(common.bind_names(Be,
+    "BMessage B_OK B_RAW_TYPE B_INT32_TYPE B_INT64_TYPE B_STRING_TYPE"))
 
 
 def t_what():
