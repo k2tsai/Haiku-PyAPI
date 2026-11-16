@@ -19,7 +19,7 @@ import subprocess
 import sys
 import types
 
-# Configuration (env-overridable; defaults match the standard VM layout —
+# Configuration (env-overridable; defaults match the standard layout —
 # the suite dir is otherwise self-contained and relocatable):
 #   BE_PKG_DIR           the Be package dir to import (the .so farm)
 #   BINDTESTS_SCRATCH    scratch dir for test files

@@ -3,7 +3,8 @@
 # test_storage.py — the functional-equivalence standard for the storage kit.
 # Spec = the beta6 C API (headers/os/storage/*): signatures, return
 # conventions (ssize_t bytes for attr I/O, (value, status) tuples where the
-# binding chose them), and behavior. Red rows are the fix backlog.
+# binding chose them), and behavior. Red rows mark where the binding
+# deviates from the standard.
 #
 import json
 import os
@@ -156,8 +157,8 @@ common.check("storage:entry-path", t_entry_path)
 
 def t_entry_getsize():
     # STANDARD: GetSize() with no args -> (status, size) like File.GetSize.
-    # The raw binding is BStatable::GetSize(off_t*) — an out-param hazard
-    # (None -> null-deref; int -> TypeError). Red until rebound.
+    # A raw BStatable::GetSize(off_t*) out-param binding would null-deref
+    # None and TypeError on an int.
     e = BEntry(P)
     r = e.GetSize()
     assert isinstance(r, tuple) and r[0] == B_OK and r[1] > 0, repr(r)
@@ -193,8 +194,7 @@ def t_query_attr_indexed():
     # An attribute predicate matches only nodes whose volume carries the
     # B+ index for that attr name (kernel auto-maintains it on every attr
     # write). Self-contained: create the index, write the attr, query, then
-    # clean up — the old version queried the M2d PoC's cognis:embedding.*
-    # corpus, which is ad-hoc volume state absent on a fresh install.
+    # clean up — no reliance on pre-existing volume state.
     import ctypes
     libroot = ctypes.CDLL("libroot.so")
     create, remove = libroot.fs_create_index, libroot.fs_remove_index
@@ -219,7 +219,7 @@ common.check("query:attr-indexed", t_query_attr_indexed)
 def t_query_attr_unindexed():
     # SPEC RULE (kernel behavior): an attribute clause matches NOTHING
     # without its index. Pinned here so a behavior change is visible.
-    n = _qcount("cognis:nonexistent_attr_xyz > 0")
+    n = _qcount("bindtest:nonexistent_attr_xyz > 0")
     assert n == 0, "unindexed attr matched %d (kernel behavior changed?)" % n
 common.check("query:attr-unindexed-matches-nothing", t_query_attr_unindexed)
 
@@ -236,14 +236,14 @@ def t_query_pushstack():
         raise AssertionError("Push* stack now works — retire this known-broken row")
 common.check("query:pushstack-known-broken", t_query_pushstack)
 
-# --------------------- regression rows: one per beta6 binding fix (2026-10-25)
-# Each pins the EXACT standard shape of a fixed method and would have failed
-# (TypeError / crash / wrong value) against the pre-fix binding.
+# --------------------- regression rows: one per beta6 binding fix
+# Each pins the EXACT standard shape of a method and fails (TypeError /
+# crash / wrong value) if the binding deviates from the standard.
 
 # ---- BStatable out-param getters (Statable.cpp): no-arg -> tuple
 def t_statable_getsize():
-    # STANDARD: GetSize() no args -> (status, size) like BFile::GetSize.
-    # Pre-fix: raw GetSize(off_t*) -> TypeError (arg required) / null-deref.
+    # STANDARD: GetSize() no args -> (status, size) like BFile::GetSize; a
+    # raw GetSize(off_t*) binding would TypeError (arg required) / null-deref.
     e = BEntry(P)
     r = e.GetSize()
     assert isinstance(r, tuple) and len(r) == 2, repr(r)
@@ -251,7 +251,8 @@ def t_statable_getsize():
 common.check("storage:BStatable.GetSize", t_statable_getsize)
 
 def t_statable_getowner():
-    # STANDARD: GetOwner() -> (owner:int, status). Pre-fix: raw uid_t* out-param.
+    # STANDARD: GetOwner() -> (owner:int, status); a raw uid_t* binding would
+    # null-deref.
     e = BEntry(P)
     r = e.GetOwner()
     assert isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], int), repr(r)
@@ -259,7 +260,8 @@ def t_statable_getowner():
 common.check("storage:BStatable.GetOwner", t_statable_getowner)
 
 def t_statable_getpermissions():
-    # STANDARD: GetPermissions() -> (mode:int, status). Pre-fix: raw mode_t*.
+    # STANDARD: GetPermissions() -> (mode:int, status); a raw mode_t* binding
+    # would null-deref.
     e = BEntry(P)
     r = e.GetPermissions()
     assert isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], int), repr(r)
@@ -267,7 +269,8 @@ def t_statable_getpermissions():
 common.check("storage:BStatable.GetPermissions", t_statable_getpermissions)
 
 def t_statable_getmodificationtime():
-    # STANDARD: GetModificationTime() -> (time:int, status). Pre-fix: raw time_t*.
+    # STANDARD: GetModificationTime() -> (time:int, status); a raw time_t*
+    # binding would null-deref.
     e = BEntry(P)
     r = e.GetModificationTime()
     assert isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], int), repr(r)
@@ -275,7 +278,8 @@ def t_statable_getmodificationtime():
 common.check("storage:BStatable.GetModificationTime", t_statable_getmodificationtime)
 
 def t_statable_getnoderef():
-    # STANDARD: GetNodeRef() -> (node_ref, status). Pre-fix: raw node_ref*.
+    # STANDARD: GetNodeRef() -> (node_ref, status); a raw node_ref* binding
+    # would null-deref.
     e = BEntry(P)
     ref, st = e.GetNodeRef()
     assert st == B_OK and ref.node > 0, (st, ref.node)
@@ -289,7 +293,8 @@ def t_statable_getvolume():
 common.check("storage:BStatable.GetVolume", t_statable_getvolume)
 
 def t_statable_getstat():
-    # STANDARD: GetStat() no args -> (stat, status). Pre-fix: None null-deref.
+    # STANDARD: GetStat() no args -> (stat, status); a raw stat* binding
+    # would null-deref None.
     e = BEntry(P)
     st_obj, st = e.GetStat()
     assert st == B_OK and st_obj.st_size > 0, (st, st_obj.st_size)
@@ -297,23 +302,24 @@ common.check("storage:BStatable.GetStat", t_statable_getstat)
 
 # ---- BEntry (Entry.cpp)
 def t_entry_getname():
-    # STANDARD: GetName() -> (name:str, status) — value-first (Node.cpp pattern).
-    # Pre-fix: raw char* out-param wrote into the caller's str buffer.
+    # STANDARD: GetName() -> (name:str, status) — value-first (Node.cpp
+    # pattern); a raw char* out-param would write into the caller's str buffer.
     e = BEntry(P)
     name, st = e.GetName()
     assert st == B_OK and name == os.path.basename(P), (st, name)
 common.check("storage:BEntry.GetName", t_entry_getname)
 
 def t_entry_getref():
-    # STANDARD: GetRef() no args -> (entry_ref, status). Pre-fix: raw entry_ref*.
+    # STANDARD: GetRef() no args -> (entry_ref, status); a raw entry_ref*
+    # binding would null-deref.
     e = BEntry(P)
     ref, st = e.GetRef()
     assert st == B_OK and ref.name == os.path.basename(P), (st, ref.name)
 common.check("storage:BEntry.GetRef", t_entry_getref)
 
 def t_entry_getpath():
-    # STANDARD: GetPath() no args -> (BPath, status) — constructed object.
-    # Pre-fix: raw BPath* out-param (None -> null-deref).
+    # STANDARD: GetPath() no args -> (BPath, status) — a constructed object;
+    # a raw BPath* binding would null-deref None.
     e = BEntry(P)
     p, st = e.GetPath()
     assert st == B_OK and p.Path() == P, (st, p.Path())
@@ -321,11 +327,9 @@ common.check("storage:BEntry.GetPath", t_entry_getpath)
 
 # ---- BFile (File.cpp)
 def t_file_close_alias():
-    # STANDARD: beta6 BFile has no Close() (File.h) — bound as alias of
-    # BNode::Unset. Pre-fix: hasattr(f, "Close") was False. (The
-    # storage:BFile-Close-bound row above is the original pin; this one
-    # additionally verifies the file is actually released by Close:
-    # a second read after Close must fail, not return stale data.)
+    # STANDARD: beta6 BFile has no Close() (File.h) — bound as an alias of
+    # BNode::Unset. This row additionally verifies Close actually releases
+    # the file: a second write after Close must fail, not return stale data.
     f = BFile()
     assert f.SetTo(P, B_READ_WRITE) == B_OK
     n = f.Write(b"close probe")
@@ -340,7 +344,8 @@ common.check("storage:BFile.Close", t_file_close_alias)
 
 # ---- BDirectory (Directory.cpp)
 def t_directory_getentry():
-    # STANDARD: GetEntry() no args -> (BEntry, status). Pre-fix: raw BEntry*.
+    # STANDARD: GetEntry() no args -> (BEntry, status); a raw BEntry* binding
+    # would null-deref.
     # BDirectory::GetEntry returns the entry of the directory itself
     # (Directory.h:37), not a listed child.
     d = BDirectory(os.path.dirname(P))
@@ -350,15 +355,16 @@ def t_directory_getentry():
 common.check("storage:BDirectory.GetEntry", t_directory_getentry)
 
 def t_directory_findentry():
-    # STANDARD: FindEntry(path) 2-arg form -> (BEntry, status).
-    # Pre-fix: only (path, entry*, traverse) existed — None entry* null-derefed.
+    # STANDARD: FindEntry(path) 2-arg form -> (BEntry, status); the 3-arg
+    # (path, entry*, traverse) form null-derefs a None entry*.
     d = BDirectory(os.path.dirname(P))
     e, st = d.FindEntry(os.path.basename(P))
     assert st == B_OK and e.Exists(), (st,)
 common.check("storage:BDirectory.FindEntry", t_directory_findentry)
 
 def t_directory_getstatfor():
-    # STANDARD: GetStatFor(path) -> (stat, status). Pre-fix: raw stat* out-param.
+    # STANDARD: GetStatFor(path) -> (stat, status); a raw stat* binding would
+    # null-deref.
     d = BDirectory(os.path.dirname(P))
     st_obj, st = d.GetStatFor(os.path.basename(P))
     assert st == B_OK and st_obj.st_size > 0, (st, st_obj.st_size)
@@ -366,7 +372,8 @@ common.check("storage:BDirectory.GetStatFor", t_directory_getstatfor)
 
 # ---- BNode (Node.cpp)
 def t_node_getstat():
-    # STANDARD: BNode.GetStat() no args -> (stat, status). Pre-fix: raw stat*.
+    # STANDARD: BNode.GetStat() no args -> (stat, status); a raw stat* binding
+    # would null-deref.
     n = BNode(P)
     st_obj, st = n.GetStat()
     assert st == B_OK and st_obj.st_size > 0, (st, st_obj.st_size)
@@ -374,7 +381,8 @@ common.check("storage:BNode.GetStat", t_node_getstat)
 
 # ---- BVolume (Volume.cpp)
 def t_volume_getname():
-    # STANDARD: GetName() no args -> (name:str, status). Pre-fix: raw char*.
+    # STANDARD: GetName() no args -> (name:str, status); a raw char* binding
+    # would null-deref.
     name, st = VOL.GetName()
     assert st == B_OK and isinstance(name, str) and name != "", (st, name)
 common.check("storage:BVolume.GetName", t_volume_getname)
@@ -391,7 +399,8 @@ common.check("storage:BVolume.GetIcon", t_volume_geticon_bound)
 
 # ---- BNodeInfo (NodeInfo.cpp)
 def t_nodeinfo_getapphint():
-    # STANDARD: GetAppHint() no args -> (entry_ref, status). Pre-fix: raw ref*.
+    # STANDARD: GetAppHint() no args -> (entry_ref, status); a raw ref*
+    # binding would null-deref None.
     n = BNode(P)
     ni = BNodeInfo(n)
     ref, st = ni.GetAppHint()
@@ -400,11 +409,11 @@ common.check("storage:BNodeInfo.GetAppHint", t_nodeinfo_getapphint)
 
 def t_nodeinfo_getpreferredapp_default():
     # STANDARD: GetPreferredApp() with NO verb arg uses the C++ B_OPEN
-    # default. Pre-fix: the py::arg("verb")=B_OPEN default made pybind11
-    # convert the app_verb enum (registered by the MimeType module, which
-    # stock __init__ imports AFTER NodeInfo) at registration time ->
-    # ImportError "could not convert default argument 'verb: app_verb'"
-    # that killed BOTH the full `import Be` and any solo NodeInfo import.
+    # default. A py::arg("verb")=B_OPEN default makes pybind11 convert the
+    # app_verb enum (registered by the MimeType module, which stock __init__
+    # imports AFTER NodeInfo) at registration time -> ImportError "could not
+    # convert default argument 'verb: app_verb'" that kills BOTH the full
+    # `import Be` and any solo NodeInfo import.
     n = BNode(P)
     ni = BNodeInfo(n)
     r = ni.GetPreferredApp()
@@ -414,10 +423,10 @@ common.check("storage:BNodeInfo.GetPreferredApp-default", t_nodeinfo_getpreferre
 
 def t_nodeinfo_import_solo():
     # STANDARD: Be.NodeInfo imports in a fresh interpreter with only its
-    # default-arg dep (Mime, for the icon_size defaults) but NO MimeType —
-    # the app_verb registration-time default (registered by MimeType,
-    # imported after NodeInfo in stock order) was the blocker; pinned so
-    # the import-order coupling cannot silently return.
+    # default-arg dep (Mime, for the icon_size defaults) but NO MimeType — a
+    # registration-time app_verb default (registered by MimeType, imported
+    # after NodeInfo in stock order) would break this import; pinned so the
+    # import-order coupling cannot silently return.
     code = ("import sys, types, importlib; "
             "pkg = types.ModuleType('Be'); pkg.__path__ = [%r]; "
             "sys.modules['Be'] = pkg; "
@@ -431,12 +440,12 @@ def t_nodeinfo_import_solo():
 common.check("storage:BNodeInfo.import-solo", t_nodeinfo_import_solo)
 
 def t_volumeroster_import_solo():
-    # STANDARD: Be.VolumeRoster imports solo (fresh interpreter). Pre-fix:
-    # py::arg("messenger")=be_app_messenger made pybind11 convert the
-    # BMessenger default (registered by the LATER-imported Messenger
-    # module) at registration time -> ImportError, which also killed the
-    # full `import Be`. The C++ be_app_messenger default now applies at
-    # call time via the no-arg StartWatching overload.
+    # STANDARD: Be.VolumeRoster imports solo (fresh interpreter). A
+    # py::arg("messenger")=be_app_messenger default makes pybind11 convert
+    # the BMessenger default (registered by the LATER-imported Messenger
+    # module) at registration time -> ImportError, which also kills the full
+    # `import Be`. The C++ be_app_messenger default must therefore apply at
+    # call time, via the no-arg StartWatching overload.
     code = ("import sys, types, importlib; "
             "pkg = types.ModuleType('Be'); pkg.__path__ = [%r]; "
             "sys.modules['Be'] = pkg; "
@@ -450,9 +459,9 @@ common.check("storage:BVolumeRoster.import-solo", t_volumeroster_import_solo)
 
 # ---- BAppFileInfo (AppFileInfo.cpp)
 def t_appfileinfo_gettype():
-    # STANDARD: GetType() no args -> (status, value) — shape matches the base
-    # BNodeInfo::GetType lambda (value str on B_OK, None on error).
-    # Pre-fix: raw char* out-param (None -> null-deref).
+    # STANDARD: GetType() no args -> (status, value) — shape matches the
+    # base-class BNodeInfo::GetType binding (value str on B_OK, None on
+    # error); a raw char* out-param would null-deref None.
     f = BFile(P, B_READ_ONLY)
     afi = BAppFileInfo(f)
     r = afi.GetType()
@@ -470,7 +479,8 @@ def t_appfileinfo_getsignature():
 common.check("storage:BAppFileInfo.GetSignature", t_appfileinfo_getsignature)
 
 def t_appfileinfo_getappflags():
-    # STANDARD: GetAppFlags() no args -> (status, flags:int). Pre-fix: raw uint32*.
+    # STANDARD: GetAppFlags() no args -> (status, flags:int); a raw uint32*
+    # binding would null-deref.
     f = BFile(P, B_READ_ONLY)
     afi = BAppFileInfo(f)
     st, flags = afi.GetAppFlags()
@@ -479,8 +489,8 @@ common.check("storage:BAppFileInfo.GetAppFlags", t_appfileinfo_getappflags)
 
 # ---- BMimeType (MimeType.cpp)
 def t_mimetype_getshortdescription():
-    # STANDARD: GetShortDescription() no args -> (status, desc:str|None).
-    # Pre-fix: raw char* out-param (None -> null-deref, str -> buffer write).
+    # STANDARD: GetShortDescription() no args -> (status, desc:str|None); a
+    # raw char* out-param would null-deref None / write into a str buffer.
     # "text/plain" is an installed meta type on any Haiku system.
     mt = BMimeType("text/plain")
     st, desc = mt.GetShortDescription()
@@ -490,8 +500,8 @@ common.check("storage:BMimeType.GetShortDescription", t_mimetype_getshortdescrip
 
 def t_mimetype_getpreferredapp_default():
     # STANDARD: GetPreferredApp() no args -> (status, sig:str|None) with the
-    # C++ B_OPEN verb default. Pre-fix: raw char* out-param + app_verb
-    # enum default (fine in-module, but pinned here for the call shape).
+    # C++ B_OPEN verb default; pinned for the call shape (the hazards: a raw
+    # char* out-param and a cross-module app_verb enum default).
     mt = BMimeType("text/plain")
     r = mt.GetPreferredApp()
     assert isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], int), repr(r)
@@ -500,9 +510,9 @@ common.check("storage:BMimeType.GetPreferredApp-default", t_mimetype_getpreferre
 
 # ---- BPath single-arg forms (Path.cpp NULL-default defect class)
 def t_path_single_arg_ctor():
-    # STANDARD: BPath(path) works. Pre-fix: py::arg("leaf")=NULL stored the
-    # nullptr default as int 0 -> the const char* caster rejected it ->
-    # TypeError on every single-arg call.
+    # STANDARD: BPath(path) works. A py::arg("leaf")=NULL default stores the
+    # nullptr as int 0 -> the const char* caster rejects it -> TypeError on
+    # every single-arg call.
     p = BPath(P)
     assert p.Path() == P, p.Path()
 common.check("storage:BPath.single-arg-ctor", t_path_single_arg_ctor)
@@ -516,8 +526,8 @@ common.check("storage:BPath.single-arg-setto", t_path_single_arg_setto)
 
 # ---- BPathFinder single-arg forms (same NULL-default defect class)
 def t_pathfinder_single_arg():
-    # STANDARD: BPathFinder() and pf.SetTo(path) work. Pre-fix: the
-    # dependency=NULL default broke every short-form call (TypeError).
+    # STANDARD: BPathFinder() and pf.SetTo(path) work; a dependency=NULL
+    # default breaks every short-form call (TypeError).
     pf = BPathFinder()
     st = pf.SetTo("/boot/home")
     assert st == B_OK, st
@@ -525,8 +535,8 @@ common.check("storage:BPathFinder.single-arg-setto", t_pathfinder_single_arg)
 
 # ---- Size constants (Size.cpp)
 def t_size_unset():
-    # STANDARD: B_SIZE_UNSET is the C const float -2 (Size.h:13), NOT the
-    # source string "- 2". BSize() default ctor uses it for unset components.
+    # STANDARD: B_SIZE_UNSET is the C const float -2 (Size.h:13) — a number,
+    # not a string. BSize() default ctor uses it for unset components.
     assert B_SIZE_UNSET == -2, repr(B_SIZE_UNSET)
     assert isinstance(B_SIZE_UNSET, float), type(B_SIZE_UNSET)
     b = BSize()
@@ -539,14 +549,15 @@ def t_size_unlimited():
 common.check("storage:Size.B_SIZE_UNLIMITED", t_size_unlimited)
 
 def t_watch_node_short_forms():
-    # Pairs the 2026-10-27 NodeMonitor.cpp fix: `py::arg("looper")=NULL`
-    # stored the default as int 0 -> the short handler forms were
-    # permanently uncallable. Now: watch_node(node, flags, handler) is
-    # 3-arg; stop_watching(handler) is 2-arg. Headless-safe (BLooper
-    # target, no app needed to register the watch).
+    # Pairs the NodeMonitor.cpp binding: a `py::arg("looper")=NULL` default
+    # stores the nullptr as int 0, making the short handler forms uncallable
+    # (NULL looper -> BNodeMonitor::Entry(BEntry*,NULL) -> B_ENTRY_ERROR).
+    # watch_node(node, flags, handler) must be 3-arg; stop_watching(handler)
+    # 2-arg. Headless-safe (BLooper target, no app needed to register the
+    # watch).
     s = os.stat(common.SCRATCH)
     nref = node_ref(s.st_dev, s.st_ino)   # Node-module type (double-registered)
-    lp = BLooper()   # 0-arg form (2026-10-27 fix: NULL-default was uncallable)
+    lp = BLooper()   # 0-arg form (the C++ default looper)
     st = watch_node(nref, B_WATCH_DIRECTORY, lp)      # short form
     assert st == B_OK, "watch_node 3-arg = %d" % st
     st = stop_watching(lp)                            # short form

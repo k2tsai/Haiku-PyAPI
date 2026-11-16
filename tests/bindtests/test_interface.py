@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 #
-# test_interface.py — interface-kit binding fixes (2026-10-25). One row per
-# fix, paired with it (the pattern for future contributors):
+# test_interface.py — interface-kit regression rows. Each row pins the
+# exact standard shape of a method/constant the interface kit exposes
+# (the pattern for future contributors):
 #   * constant rows pin beta6 header values in the merged Be namespace;
 #   * out-param rebind rows pin the NEW Pythonic shape via the pybind11
 #     docstring (import-safe — no GUI instance needed) and, where a
@@ -41,7 +42,8 @@ def doc(cls, name):
 # ------------------------------------------------------------- constants
 def t_const_no_truncation():
     # beta6 Font.h: B_NO_TRUNCATION = ~0U (truncation-mode enum, 0xFFFFFFFF).
-    # Was bound as the Python STRING "~0U" before the fix.
+    # Must be an int, not the string "~0U" — a string binding would make
+    # `flags & B_NO_TRUNCATION` raise.
     assert isinstance(B_NO_TRUNCATION, int), repr(B_NO_TRUNCATION)
     assert B_NO_TRUNCATION == 0xFFFFFFFF, hex(B_NO_TRUNCATION)
 common.check("interface:Font.B_NO_TRUNCATION", t_const_no_truncation)
@@ -57,15 +59,16 @@ def t_const_cursor_ids():
 common.check("interface:InterfaceDefs.cursor_ids", t_const_cursor_ids)
 
 
-# EXAMPLE of a paired row for a binding fix (not active in the suite): the
-# ControlLook fix exposed the nested arrow values (BControlLook::B_*_ARROW =
-# 0..3, ControlLook.h:67-70) as B_CONTROL_LOOK_* to disambiguate them from the
-# global cursor ids (B_LEFT_ARROW = 0x1c, InterfaceDefs.h) — a binding-design
-# choice, not a C-API constant, so the suite (which pins the C API) doesn't own
-# it. When you fix a binding, add a paired row like this asserting the fixed
-# API (it reads ABSENT against the base until the fix lands). The
-# Be.BControlLookEnum.* asserts below are header spec (base-available); keep
-# those, drop the B_CONTROL_LOOK_* lines, if you want that coverage.
+# EXAMPLE of a paired row for a binding-design choice (not active in the
+# suite): the nested arrow values (BControlLook::B_*_ARROW = 0..3,
+# ControlLook.h:67-70) can be exposed as B_CONTROL_LOOK_* to disambiguate them
+# from the global cursor ids (B_LEFT_ARROW = 0x1c, InterfaceDefs.h). That is a
+# binding-design choice, not a C-API constant, so the suite (which pins the C
+# API) doesn't own it by default. When a binding exposes such a name, add a
+# paired row like this asserting its shape (it reads ABSENT until the name
+# exists). The Be.BControlLookEnum.* asserts below are header spec (always
+# available); keep those, drop the B_CONTROL_LOOK_* lines, if you want that
+# coverage.
 # def t_const_control_look_nested():
 #     assert B_CONTROL_LOOK_LEFT_ARROW == 0   # … RIGHT=1, UP=2, DOWN=3
 #     assert Be.BControlLookEnum.B_LEFT_ARROW == 0
@@ -235,11 +238,10 @@ common.check("interface:layouts.GetHeightForWidth-fleet",
 
 
 # ------------------------------------------------- Screen: functional
-# NOTE (2026-10-26): from an ssh session the app_server answers screen
-# queries with B_ERROR and a zero frame (no screen attached to that
-# session), so every row below skips unless a screen is visible; run from
-# the console session (or with the desktop up for the user) and they pin
-# st == B_OK for real.
+# NOTE: in a headless session the app_server answers screen queries with
+# B_ERROR and a zero frame (no screen attached to the session), so every
+# row below skips unless a screen is visible; run from a session with a
+# visible desktop and they pin st == B_OK for real.
 def _screen():
     try:
         s = BScreen()
@@ -291,9 +293,10 @@ common.check("interface:Screen.GetBrightness", t_screen_get_brightness)
 
 
 def t_screen_get_bitmap_frame():
-    # The 2026-10-25 fix: the old lambda segfaulted on the default NULL
-    # frame (it did `new BBitmap(*frame, ...)`); now frame is optional and
-    # the bitmap is allocated by the API itself (Screen.h GetBitmap).
+    # STANDARD: GetBitmap(frame) — frame is optional; when omitted the bitmap
+    # is allocated by the API itself (Screen.h GetBitmap). A binding that
+    # dereferences the frame arg (`new BBitmap(*frame, ...)`) segfaults on the
+    # NULL default.
     s = _screen()
     bitmap, st = s.GetBitmap(False)
     assert st == B_OK, st
@@ -416,12 +419,12 @@ def t_font_get_height():
 common.check("interface:Font.GetHeight", t_font_get_height)
 
 
-# NOTE (2026-10-26): glyph-level font queries (CountTuned/GetTunedInfo/
-# TruncateString/GetEdges/GetBoundingBoxes*) BLOCK IN KERNEL IPC from an ssh
-# session on this VM (the font server query never answers; the thread sits
-# in uninterruptible state — even kill -9 cannot reap it). Only family-level
-# queries (Size/GetHeight) are provably safe headless, so those rows are
-# shape-pins via docstring, not functional calls.
+# NOTE: glyph-level font queries (CountTuned/GetTunedInfo/
+# TruncateString/GetEdges/GetBoundingBoxes*) BLOCK IN KERNEL IPC in a
+# headless session (the font server query never answers; the thread sits
+# in uninterruptible state — even kill -9 cannot reap it). Only
+# family-level queries (Size/GetHeight) are provably safe headless, so
+# those rows are shape-pins via docstring, not functional calls.
 def t_font_get_tuned_info_shape():
     d = doc(BFont, "GetTunedInfo")
     assert "tuned_font_info" in d and "->" in d, d

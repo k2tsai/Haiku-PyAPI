@@ -4,8 +4,8 @@
 # Spec = the beta6 headers (os/support/*). Headless-safe: no app, no windows,
 # BJob::Run is synchronous in beta6 (Job.cpp, no worker thread).
 #
-# Conventions pinned here (each fix pairs with 1-3 rows named
-# support:<Class>.<method> that would have FAILED on the pre-fix bindings):
+# Conventions pinned here (each pairs with 1-3 rows named
+# support:<Class>.<method> that fail if the binding deviates from the standard):
 #   * Flattenable family: Flatten() -> (status, bytes), Unflatten(code, bytes)
 #     -> status. The raw void* out-param forms are NOT bound.
 #   * DataIO family: Read/Write take PEP 3118 buffers; a bytearray comes back
@@ -37,8 +37,7 @@ globals().update(common.bind_names(Be,
 
 
 # ---------------------------------------------------------------- BString
-# (runtime smoke — String.cpp unchanged by this round; rows pin the standard
-#  shape for the next contributor)
+# (runtime smoke; rows pin the standard shape)
 
 def t_string_setto():
     s = BString()
@@ -83,8 +82,8 @@ common.check("support:stringlist-sort", t_stringlist_sort)
 
 
 def t_stringlist_flatten():
-    # FIX: raw Flatten(void*, ssize_t) out-param was bound -> None crashed /
-    # wrote caller memory. Now: no-arg safe form returns (status, bytes).
+    # STANDARD: no-arg Flatten() -> (status, bytes). A raw (void*, ssize_t)
+    # out-param binding would crash on None / write caller memory.
     sl = BStringList()
     sl.Add(BString("alpha"))
     sl.Add(BString("charlie"))
@@ -101,7 +100,7 @@ common.check("support:BStringList.Flatten", t_stringlist_flatten)
 
 
 def t_stringlist_unflatten():
-    # FIX: Unflatten(code, const void*, ssize_t) -> bytes-in form.
+    # STANDARD: Unflatten(code, data: bytes) -> status (bytes-in form).
     sl = BStringList()
     sl.Add(BString("alpha"))
     sl.Add(BString("charlie"))
@@ -156,9 +155,9 @@ common.check("support:list-basics", t_list_basics)
 
 
 # ------------------------------------------------------- DataIO family
-# FIX: Read/Write/ReadAt/WriteAt/ReadExactly/WriteExactly/GetSize were bound
-# with raw void*/off_t* params (unusable from Python); now buffer-protocol
-# with (status, n) tuples for the C out-param variants.
+# STANDARD: Read/Write/ReadAt/WriteAt/ReadExactly/WriteExactly/GetSize take
+# PEP 3118 buffers; the C out-param variants return (status, n) tuples
+# (raw void*/off_t* params are unusable from Python).
 
 def t_memoryio_read():
     ba = bytearray(b"0123456789")
@@ -188,14 +187,15 @@ common.check("support:BMemoryIO.WriteAt", t_memoryio_writeat)
 
 
 def t_positionio_getsize():
-    # GetSize() -> (status, size); the old off_t* out-param form is gone
+    # GetSize() -> (status, size); the raw off_t* out-param form must not
+    # be bound.
     ba = bytearray(b"0123456789")
     mem = BMemoryIO(ba, 10)
     st, size = mem.GetSize()
     assert st == B_OK and size == 10, (st, size)
     try:
         mem.GetSize(0)
-        raise AssertionError("GetSize(off_t*) form should be gone")
+        raise AssertionError("GetSize(off_t*) form must not be bound")
     except TypeError:
         pass
 common.check("support:BPositionIO.GetSize", t_positionio_getsize)
@@ -256,8 +256,9 @@ common.check("support:bufferio", t_bufferio)
 
 
 # --------------------------------------------------------------------- Url
-# FIX: __eq__/__ne__ compared against a throwaway default BUrl and returned a
-# (bool, BUrl) tuple — every comparison was truthy. Now real 2-arg bools.
+# STANDARD: __eq__/__ne__ are real 2-arg bools. Comparing against a throwaway
+# default BUrl (returning a (bool, BUrl) tuple) would make every comparison
+# truthy.
 
 def t_url_eq():
     u1 = BUrl("file:///boot/home")
@@ -278,7 +279,7 @@ common.check("support:url-fields", t_url_fields)
 
 
 # -------------------------------------------------------- BAffineTransform
-# (runtime smoke — AffineTransform.cpp unchanged by this round)
+# (runtime smoke)
 
 def t_transform():
     t = BAffineTransform()
@@ -298,7 +299,8 @@ common.check("support:parsedate.parse", t_parsedate_parse)
 
 
 def t_parsedate_etc():
-    # FIX: raw int* _storedFlags out-param -> (time, flags) tuple form.
+    # STANDARD: parsedate_etc -> (time, flags) tuple; a raw int* _storedFlags
+    # out-param is uncallable from Python.
     t, flags = Be.parsedate_etc("1 Jan 2021", 1600000000)
     assert 1609000000 < t < 1610000000, t
     assert isinstance(flags, int), type(flags)
@@ -315,9 +317,9 @@ common.check("support:parsedate.constants", t_parsedate_constants)
 
 
 # --------------------------------------------------------------------- UTF8
-# FIX: convert_to/from_utf8 were bound with raw int32*/char* out-params
-# (uncallable from Python) + a hardcoded substitute; now Pythonic forms
-# return (status, dest_bytes, state), substitute defaults to B_SUBSTITUTE.
+# STANDARD: convert_to/from_utf8 return (status, dest_bytes, state), with
+# substitute defaulting to B_SUBSTITUTE (raw int32*/char* out-params are
+# uncallable from Python).
 
 def t_utf8_from():
     err, out, state = Be.convert_from_utf8(
@@ -333,9 +335,9 @@ common.check("support:UTF8.convert_to_utf8", t_utf8_to)
 
 
 # ---------------------------------------------------------------------- Job
-# FIX: BJobStateListener had no trampoline/py::init — Python listeners were
-# unconstructible and their overrides silently dead. BJob.Run stays
-# synchronous (beta6 Job.cpp: no worker thread) -> headless-safe.
+# BJobStateListener needs a trampoline + py::init, or Python listeners are
+# unconstructible and their overrides never fire. BJob.Run is synchronous
+# (beta6 Job.cpp: no worker thread) -> headless-safe.
 
 def t_job_run():
     class MyJob(BJob):
@@ -380,7 +382,7 @@ common.check("support:BJobStateListener.JobStarted", t_job_listener)
 # ---------------------------------------------------------------------- TLS
 
 def t_tls():
-    # FIX: TLS_MAX_KEYS (TLS.h:21) was not bound.
+    # TLS_MAX_KEYS (TLS.h:21) must be bound as a plain int.
     assert Be.TLS_MAX_KEYS == 64
     idx = Be.tls_allocate()
     assert isinstance(idx, int) and 0 <= idx < 64, idx
@@ -409,7 +411,8 @@ common.check("support:Errors.B_OK", t_errors)
 
 
 # ---------------------------------------------------------------- DateTime
-# FIX: BDate.GetDate(int32*, int32*, int32*) out-params -> (y, m, d) tuple.
+# STANDARD: GetDate() -> (y, m, d) tuple; the C int32* out-params are
+# absorbed (a raw out-param binding is uncallable from Python).
 
 def t_bdate_getdate():
     d = BDate(2026, 3, 15)

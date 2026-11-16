@@ -3,7 +3,8 @@
 # test_message.py — pins the messaging core (the microservice foundation).
 # Spec = beta6 <app/BMessage.h> + the established Pythonic conventions
 # (Find* -> (status, value) tuples, ssize_t/bytes where C says so).
-# Red rows = the fix backlog (Flatten/Unflatten have no safe form today).
+# Red rows mark shapes the binding lacks on this base (Flatten/Unflatten
+# have no safe bytes form).
 #
 import sys
 
@@ -26,9 +27,9 @@ common.check("message:what-4cc", t_what)
 
 def t_add_find_string():
     m = BMessage(0x54455354)
-    m.AddString("who", "cognis")
+    m.AddString("who", "sample")
     st, v = m.FindString("who")
-    assert st == B_OK and v == "cognis", (st, v)
+    assert st == B_OK and v == "sample", (st, v)
     st = m.FindString("absent")
     assert st != B_OK, "FindString(absent) should not be B_OK: %r" % st
 common.check("message:add-find-string", t_add_find_string)

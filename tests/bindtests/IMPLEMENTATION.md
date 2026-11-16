@@ -57,12 +57,14 @@ row (a `:CRASH` row, e.g. `FileNotFoundError` listing the headers dir).
 The bindings expose Haiku's C constants as Python module attributes
 (`m.attr("B_CREATE_FILE") = B_CREATE_FILE;`). The sweep checks that each such
 attribute, at runtime, is the **same value, of the same type**, as the C
-expression the source binds it from.
+constant in this environment's headers.
 
-**Why the compiler is the oracle.** C++ and Python each evaluate the constant
-in their own environment, and the results are diffed: the binding's own
-expression is compiled against this environment's headers and compared to what
-the built module actually exposes. The compiler is the source of truth.
+**Why the compiler is the oracle.** The emitter references each constant by
+its C name, so the C++ side evaluates the header's actual value; that is
+diffed against what the built module exposes. The binding is checked against
+the C API itself — a source that hardcodes the wrong literal (`= "CLCH"`
+where the header has the int `'CLCH'`) fails the row even though the `.so`
+matches its source.
 
 **How it works**, per binding module:
 
@@ -74,8 +76,12 @@ the built module actually exposes. The compiler is the source of truth.
    stale backups (e.g. `bindings/support/old/`) are not swept.
 2. **C++ side** — generate a small emitter program that `#include`s the same
    headers and links the same libs as the module, and prints
-   `(NAME, typeclass, value)` for each constant. Build + run it → the values
-   the *headers* give.
+   `(NAME, typeclass, value)` for each constant, referencing it by its C name.
+   A name the headers don't declare (renamed or moved in this Haiku) is
+   re-emitted as the source's own expression and the TU is rebuilt — per name,
+   so one renamed constant doesn't downgrade the rest. If the TU still won't
+   compile, the whole module falls back to expression mode. Build + run → the
+   values the *headers* give.
 3. **Python side** (`child_constants.py`) — import the built module and read
    the same names → the values the *binding* exposes.
 4. **Diff** — one row per module, `constants:<Module>`: PASS if every name
@@ -89,15 +95,21 @@ the built module actually exposes. The compiler is the source of truth.
 composite (pointer / struct — value not comparable, e.g. `be_roster`).
 
 **What it catches:** a `.so` that doesn't match its source (a stale or wrong
-build); a type drift (int↔str, the 4cc class); a name the headers no longer
-define (the emitter fails to compile → the row FAILs, not a silent skip).
+build); a type drift (int↔str, the 4cc class); a source literal that
+disagrees with the header (`B_CREATE_FILE = 8` where beta6 says `O_CREAT` =
+`0x200` — the `.so` matches the source, the row still FAILs); a name the
+headers no longer define (the emitter fails to compile → the row FAILs, not a
+silent skip). Row details tag which oracle decided: `[name]` (the header's
+value) or `[expr]` (the source's own expression).
 
-**What is intentionally not checked:** whether a *hardcoded literal* in the
-source matches the header — the oracle is the source's own expression, not an
-independent spec. A binding that hardcoded `B_CREATE_FILE = 8` (the
-classic-era value; beta6's is `O_CREAT = 0x200`) would pass the sweep as long
-as the `.so` matches the source. The behavior rows remain the place for
-spec-level pins.
+**What is intentionally not checked:** for the names that fall back to
+`[expr]` mode (not a C symbol in this environment's headers — mostly Haiku
+renames, e.g. beta6's cursor IDs under `BControlLook::`), the oracle is the
+source's own expression rather than the header: those rows still catch a
+stale `.so` or broken `m.attr`, but not a literal that disagrees with the
+header — the behavior rows carry spec-level pins there. Constants the binding
+exposes without an `m.attr` line (`py::enum_(...).value()` auto-exports,
+`py::cast` bindings) are not swept at all; behavior rows cover those.
 
 ## Files
 
@@ -217,16 +229,16 @@ mismatch as a signal, not flakiness.
 
 Recommended shape (that is being used):
 
-1. **Name the row** `<kit>:<Class>.<method>` so it maps to the fix and is easy
-   to find. (Constants need no row — the sweep covers every `m.attr`
+1. **Name the row** `<kit>:<Class>.<method>` so it maps to the binding it
+   guards. (Constants need no row — the sweep covers every `m.attr`
    automatically.)
 2. **Pin the exact standard shape** — the tuple layout, the return convention
    (`ssize_t` bytes vs `status`, `(value, status)` order), int-vs-str for
    4ccs. The row should encode *the* correct behavior, not merely "doesn't
    crash".
-3. **Have it fail before the fix** — exercise the actual bug (the no-arg form
-   of an out-param method, the single-arg constructor, the constant's type).
-   A row that already passes pins nothing.
+3. **Have it fail against a non-conforming binding** — exercise the actual
+   gap (the no-arg form of an out-param method, the single-arg constructor,
+   the constant's type). A row that already passes pins nothing.
 4. **Keep it headless-safe** — a few assertions; guard live-resource needs
    (BApplication, screen, audio) with `try: ... except BaseException:
    common.skip(...)` so the row skips, rather than fails, without a GUI.
@@ -244,8 +256,8 @@ Worked example (one row, end to end):
 
 ```python
 def t_entry_getsize():
-    # STANDARD: GetSize() with no args -> (status, size). The pre-fix raw
-    # binding was BStatable::GetSize(off_t*) — None null-deref'd, int TypeErrored.
+    # STANDARD: GetSize() with no args -> (status, size). A raw
+    # BStatable::GetSize(off_t*) binding would null-deref None / TypeError on an int.
     e = BEntry(P)
     r = e.GetSize()
     assert isinstance(r, tuple) and r[0] == B_OK and r[1] > 0, repr(r)

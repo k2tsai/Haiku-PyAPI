@@ -9,7 +9,7 @@
 #
 # Deps are derived statically from the binding sources (two passes over
 # py::class_/py::enum_), plus the empirically-observed default-arg deps
-# (from the fullmap solo survey — see the DEFAULT_ARG_DEPS table below).
+# (see the DEFAULT_ARG_DEPS table below).
 #
 # Usage:
 #   python3 select.py BFile BEntry BPath BVolumeRoster        # closure + order
@@ -18,19 +18,17 @@
 #
 import os, re, subprocess, sys
 
-# Configuration (env-overridable; defaults match the standard VM layout):
+# Configuration (env-overridable; defaults match the standard layout):
 #   PYAPI_BINDINGS    bindings source tree for the static dep analysis
-#                     (host: ~/src/haiku-pyapi-dev/bindings)
 #   PYAPI_STOCK_INIT  the stock import-order file (defaults to $PYAPI_BINDINGS/__init__.py)
 #   PYAPI_BUDGET      the budget.py used by --budget (skipped if absent)
 BINDINGS = os.environ.get("PYAPI_BINDINGS", "/boot/home/Haiku-PyAPI/bindings")
 STOCK_INIT = os.environ.get("PYAPI_STOCK_INIT", BINDINGS + "/__init__.py")
 BUDGET = os.environ.get("PYAPI_BUDGET", "/boot/home/budget.py")
 
-# module -> [(type, registering module), ...]  [fullmap 2026-10-19: these fail
-# solo with "arg(): could not convert default argument '... (type not
-# registered yet?)'; the type IS registered, just in another module;
-# 2026-10-25: Bitmap/View additions from the bindtests baseline]
+# module -> [(type, registering module), ...]  (these fail solo with
+# "arg(): could not convert default argument '... (type not registered
+# yet?)'" even though the type IS registered — just in another module)
 DEFAULT_ARG_DEPS = {
     "Screen":           [("screen_id", "GraphicsDefs")],
     "View":             [("BPoint", "Point"), ("bitmap_tiling", "InterfaceDefs"), ("pattern", "GraphicsDefs")],
