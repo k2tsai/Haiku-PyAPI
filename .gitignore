@@ -5,3 +5,6 @@ __pycache__
 .vscode
 /build/
 /docs/build/
+
+# platform-issued credential (COG-132 onboarding) — never commit
+.haiku-vm.env
