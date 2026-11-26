@@ -25,12 +25,12 @@ Be = common.load(common.closure("Errors", "InterfaceDefs", "ControlLook",
                                 "ScrollBar", "ChannelControl", "TextControl",
                                 "TextView", "LayoutItem", "TwoDimensionalLayout",
                                 "CardLayout", "Window", "Rect", "Point",
-                                "Accelerant"))
+                                "Message", "AppDefs", "Accelerant"))
 globals().update(common.bind_names(Be,
     "BView BControl BFont BScreen BAffineTransform BBitmap BAlert BListView "
     "BTabView BDeskbar BInputDevice BPrintJob BMenuItem BDragger BSlider "
     "BScrollBar BChannelControl BTextControl BTextView BLayoutItem "
-    "BTwoDimensionalLayout BCardLayout BRect BPoint B_OK B_LEFT_ARROW "
+    "BTwoDimensionalLayout BCardLayout BWindow BRect BPoint B_OK B_LEFT_ARROW "
     "B_RIGHT_ARROW B_UP_ARROW B_DOWN_ARROW B_NO_TRUNCATION "
     "B_BITMAP_NO_SERVER_LINK"))
 
@@ -501,6 +501,184 @@ def t_deskbar_rebinds():
     assert "tuple" in doc(BDeskbar, "GetItemInfo")
     assert "tuple" in doc(BDeskbar, "AddItem")
 common.check("interface:Deskbar.rebinds", t_deskbar_rebinds)
+
+
+# ------------------------------------------------- BView binding-surface
+# Shape rows pinning the standard BView surface; headless-safe (signature checks).
+
+def t_view_outline_primitives():
+    # beta6 canvas outlines come from StrokeRect/FillRect (pattern + gradient
+    # overloads); DrawLine/DrawRect are NOT BView members on this platform at
+    # all (0 hits in the fork tree — GitHub k2tsai/paperclip#3 assumed the
+    # upstream names). Pinning the beta6-available surface so docs can point
+    # at it with confidence.
+    for m, frags in (("StrokeRect", ("rect: ", "pattern")),
+                     ("FillRect", ("rect: ", ))):
+        doc = getattr(BView, m).__doc__ or ""
+        assert all(f in doc for f in frags), "%s signature drift: %r" % (m, doc[:120])
+common.check("interface:BView.outline-primitives", t_view_outline_primitives)
+
+
+def t_view_stroke_line():
+    # COG-476 (#3 ask 3, "any canvas app needs outline/line"): beta6's line op
+    # is BView::StrokeLine. libbe exports four overloads (nm -D:
+    # _ZN5BView10StrokeLine x4); the two pattern ones were already bound, the
+    # two BGradient ones landed with COG-476. Pinning the overload COUNT and
+    # both arg families, so a silently dropped overload goes red.
+    d = doc(BView, "StrokeLine")
+    n = d.count("StrokeLine(self")               # one line per registered overload
+    assert n == 4, "overload count %d: %r" % (n, d[:200])
+    assert "pattern:" in d and "gradient:" in d, "arg-family drift: %r" % d[:200]
+    for frag in ("toPoint", "start", "end"):
+        assert frag in d, "arg drift: %r" % d[:200]
+common.check("interface:BView.stroke-line-overloads", t_view_stroke_line)
+
+
+def t_view_subclass_hooks():
+    # Defining a Python subclass that overrides Draw/MouseDown/MouseUp/
+    # MouseMoved validates the PyBView trampoline wiring at class-creation
+    # time (pybind checks the override against the registered virtual) —
+    # no event loop or server needed.
+    class _Hooks(BView):
+        def Draw(self, updateRect):
+            pass
+        def MouseDown(self, where):
+            pass
+        def MouseUp(self, where):
+            pass
+        def MouseMoved(self, where, code, dragMessage):
+            pass
+    assert issubclass(_Hooks, BView)
+common.check("interface:BView.subclass-hooks", t_view_subclass_hooks)
+
+
+# ------------------------- COG-476: names beta6 does NOT have (#3 / #16) ---
+# Absence pins, in the suite's "removed in beta6" idiom: these were asked for
+# on GitHub k2tsai/paperclip#3 and #16 under their UPSTREAM Haiku names. On
+# this fork (R1~beta6, hrev59866+79) they are not kit API at all — 0 hits in
+# headers/ and src/kits/ — so no binding may ever "re-add" them as a C++
+# mapping. (#3 ask 1/2 is served differently: Dragged / MouseWheelChanged are
+# SYNTHESIZED at the dispatch boundary — pyapi_trampolines.h, F-003 block.)
+
+common.absent("interface:BView.set-mouse-event-tracking",
+              "BView::SetMouseEventTracking does not exist on beta6 (0 hits in "
+              "the fork headers/ + src/kits/) — the #3 ask-2 'native substitute "
+              "for Dragged' has nothing to wrap; the farm synthesizes Dragged "
+              "instead (COG-476)")
+
+common.absent("interface:BView.draw-line-draw-rect",
+              "BView::DrawLine / BView::DrawRect are not beta6 kit API (0 hits "
+              "in the fork); the capability is the bound StrokeLine (4 "
+              "overloads) + StrokeRect — COG-476")
+
+common.absent("interface:Window.is-key",
+              "BWindow::IsKey does not exist on beta6 (0 hits in the fork) — "
+              "#16 ask 2; the key/active-window probe on this platform is the "
+              "bound IsActive (row below). QA's COG-427 repro shape "
+              "self.w.IsKey() must move to IsActive(), else it stays an "
+              "AttributeError -> F-009 guard -> F-013 crash class")
+
+
+# ---- F-003 (COG-476) synthesized Dragged / MouseWheelChanged delivery ----
+# beta6 has no BView virtuals for these, so the farm synthesizes them at the
+# dispatch boundary (pyapi_trampolines.h, F-003 block). Driving
+# MessageReceived() directly is safe headless: BView's ctor is server-free on
+# beta6, the wheel override CONSUMES the message (base scroll path never runs),
+# and the move carries a future "when" so beta6's late-move queue scan — which
+# dereferences Window() — is never entered. The real foreign-thread GIL path
+# (dispatch without the GIL held) is the one the F-011 Tier-B key harness
+# already pins; these rows pin the synthesis contract itself.
+
+def _wheel_msg(Be, dx=3.0, dy=-2.0):
+    m = Be.BMessage(0x5F4D5743)                     # '_MWC' B_MOUSE_WHEEL_CHANGED
+    m.AddFloat("be:wheel_delta_x", dx)
+    m.AddFloat("be:wheel_delta_y", dy)
+    m.AddPoint("screen_where", BPoint(50, 60))
+    return m
+
+
+def _moved_msg(Be, buttons=1, x=7.0, y=9.0):
+    m = Be.BMessage(0x5F4D4D56)                     # '_MMV' B_MOUSE_MOVED
+    m.AddInt32("buttons", buttons)
+    m.AddPoint("be:view_where", BPoint(x, y))
+    m.AddInt32("be:transit", 1)                     # B_INSIDE_VIEW
+    m.AddInt64("when", 999999999999999999)          # never "late" (see above)
+    return m
+
+
+def t_view_wheel_synth():
+    got = []
+
+    class _W(BView):
+        def MouseWheelChanged(self, where, deltaX, deltaY):
+            got.append((where.x, where.y, deltaX, deltaY))
+
+    v = _W(BRect(0, 0, 50, 50), "w", Be.B_FOLLOW_ALL, Be.B_WILL_DRAW)
+    v.MessageReceived(_wheel_msg(Be))
+    # off-window the point cannot be converted -> (0,0); deltas must survive
+    assert got == [(0.0, 0.0, 3.0, -2.0)], got
+
+
+def t_view_wheel_synth_gate():
+    got = []
+    seen = []
+
+    class _G(BView):
+        def MessageReceived(self, message):
+            seen.append(message.what)
+
+        def MouseWheelChanged(self, where, deltaX, deltaY):
+            got.append(1)
+
+    v = _G(BRect(0, 0, 50, 50), "g", Be.B_FOLLOW_ALL, Be.B_WILL_DRAW)
+    v.MessageReceived(_wheel_msg(Be))
+    assert seen and got == [], "app owns dispatch -> no synthesis: %r %r" % (seen, got)
+
+
+def t_view_dragged_synth():
+    dragged, moved = [], []
+
+    class _D(BView):
+        def Dragged(self, where):
+            dragged.append((where.x, where.y))
+
+        def MouseMoved(self, where, code, dragMessage):
+            moved.append(code)
+
+    v = _D(BRect(0, 0, 50, 50), "d", Be.B_FOLLOW_ALL, Be.B_WILL_DRAW)
+    v.MessageReceived(_moved_msg(Be, buttons=1))
+    assert dragged == [(7.0, 9.0)], dragged
+    assert moved == [1], "Dragged must not consume the move: %r" % moved
+    dragged[:] = []
+    moved[:] = []
+    v.MessageReceived(_moved_msg(Be, buttons=0))    # ordinary hover
+    assert dragged == [] and moved == [1], (dragged, moved)
+
+
+def t_view_synth_fail_soft():
+    # F-009 policy applies to the synthesized path too: a raise inside the
+    # override prints and returns — the process must survive the dispatch.
+    class _R(BView):
+        def MouseWheelChanged(self, where, deltaX, deltaY):
+            raise ValueError("probe")
+
+    v = _R(BRect(0, 0, 50, 50), "r", Be.B_FOLLOW_ALL, Be.B_WILL_DRAW)
+    v.MessageReceived(_wheel_msg(Be))
+
+
+for _n, _f in (("wheel-synth", t_view_wheel_synth),
+               ("wheel-synth-gate", t_view_wheel_synth_gate),
+               ("dragged-synth", t_view_dragged_synth),
+               ("synth-fail-soft", t_view_synth_fail_soft)):
+    common.check("interface:BView." + _n, _f)
+
+
+def t_window_active_probes():
+    # the #16 "IsKey next to IsFront" ask, in the names this platform has
+    assert callable(getattr(BWindow, "IsFront", None))
+    assert callable(getattr(BWindow, "IsActive", None))
+    assert not hasattr(BWindow, "IsKey")
+common.check("interface:Window.active-probes", t_window_active_probes)
 
 
 # --------------------------------------- modules not in the jam build list
