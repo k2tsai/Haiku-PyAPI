@@ -187,9 +187,16 @@ def scan_modules():
             if not m:
                 continue
             mod = m.group(1)
-            # includes for the emitter come from the RAW source (gone after -E)
+            # includes for the emitter come from the RAW source (gone after -E).
+            # pyapi_trampolines.h is filtered like the pybind11 headers: it
+            # exists only for PYBIND11_OVERRIDE trampolines, and pulling it
+            # into the EMITTER TU drags pybind's core symbols into an
+            # executable's link (farm .so tolerate the undefineds instead).
+            # Constant VALUES are swept from the -E output, which still sees
+            # the full include set, so nothing is lost here.
             includes = [h for h in INCLUDE_RE.findall(src)
-                        if not h.startswith("pybind11/") and h != "Python.h"]
+                        if not h.startswith("pybind11/")
+                        and h not in ("Python.h", "pyapi_trampolines.h")]
             consts = {}
             for line in preprocess(src_p).splitlines():
                 am = ATTR_RE.match(line)
@@ -245,12 +252,21 @@ def jam_extra_libs():
 
 
 def include_args():
-    # the repo's own headers (SubDirHdrs in the Jamfile), flat -I on each
+    # the repo's own headers (SubDirHdrs in the Jamfile), flat -I on each.
+    # "bindings" carries pyapi_trampolines.h — included by the trampoline
+    # fail-soft pass (f12 include sweep); without it -E dies on every
+    # sweeping TU ("pyapi_trampolines.h: No such file or directory") and
+    # the whole constants module CRASHes instead of sweeping.
     args = []
-    for d in ("headers", "headers/app", "headers/interface"):
+    for d in ("headers", "bindings", "headers/app", "headers/interface"):
         p = os.path.join(REPO, d)
         if os.path.isdir(p):
             args.append("-I" + p)
+    # pybind11 root: needed at COMPILE time too once a swept TU drags the
+    # trampoline header into the emitter TU (its line 6 is <pybind11/...>)
+    p = os.path.join(REPO, "pybind11", "include")
+    if os.path.isdir(p):
+        args.append("-I" + p)
     # Jambase puts every top-level subdir of the system headers on the path
     # (that's what makes flat `#include <StorageDefs.h>` work)
     args.append("-I" + SYSTEM_HDRS)
