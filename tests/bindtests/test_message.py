@@ -14,7 +14,8 @@ Be = common.load(["Errors", "AppDefs", "TypeConstants", "String", "Handler",
                   "Looper", "Message", "Messenger", "Roster", "Application"])
 # note: B_FAILED was removed in beta6 — assert `st != B_OK` instead
 globals().update(common.bind_names(Be,
-    "BMessage B_OK B_RAW_TYPE B_INT32_TYPE B_INT64_TYPE B_STRING_TYPE"))
+    "BMessage B_OK B_RAW_TYPE B_INT32_TYPE B_INT64_TYPE B_STRING_TYPE "
+    "BMessenger"))
 
 
 def t_what():
@@ -101,6 +102,23 @@ def t_type_codes_are_4cc():
     assert B_RAW_TYPE == 0x52415754, hex(B_RAW_TYPE)       # 'RAWT'
     assert B_STRING_TYPE == 0x43535452, hex(B_STRING_TYPE) # 'CSTR'
 common.check("message:type-codes-4cc", t_type_codes_are_4cc)
+
+
+def t_messenger_view_overload():
+    # COG-454: a BView IS a BHandler in C++, but that base edge stays
+    # UNREGISTERED (holder split: smart_holder BHandler vs nodelete view
+    # hierarchy), so the handler overload can never accept a raw or
+    # subclassed view — BMessenger(view) raised TypeError and the Tier-B
+    # self-posted leg could not be constructed. The BView overload is the
+    # supported spelling; pin its shape so it cannot regress silently.
+    # (instance-level proof lives in the Tier-B selftest; view construction
+    # needs a server context, so this row is a headless shape guard.)
+    d = BMessenger.__init__.__doc__ or ""
+    # cross-module types render fully qualified (View.BView / Be.View.BView)
+    rows = [l for l in d.splitlines() if "view:" in l and "BView" in l]
+    assert rows, d[:400]
+    assert "BLooper = None" in rows[0], rows[0]
+common.check("message:BMessenger.view-overload", t_messenger_view_overload)
 
 
 sys.exit(common.report("test_message"))
