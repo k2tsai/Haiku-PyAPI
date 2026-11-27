@@ -1,4 +1,5 @@
 #include <pybind11/pybind11.h>
+#include <pyapi_trampolines.h>
 #include <pybind11/stl.h>
 #include <pybind11/iostream.h>
 #include <pybind11/operators.h>
@@ -525,8 +526,13 @@ py::enum_<MyClass::various>(m, "BControlLookEnum")
 .value("B_BLEND_FRAME", MyClass::various::B_BLEND_FRAME)
 .value("B_KNOB_NONE", MyClass::various::B_KNOB_NONE)
 .value("B_KNOB_DOTS", MyClass::various::B_KNOB_DOTS)
-.value("B_KNOB_LINES", MyClass::various::B_KNOB_LINES)
-.export_values();
+.value("B_KNOB_LINES", MyClass::various::B_KNOB_LINES);
+// FIXED (2026-10-25): no .export_values() here — it leaked the nested
+// BControlLook arrow values (0..3) into the module namespace, shadowing
+// the GLOBAL cursor ids B_LEFT_ARROW..B_DOWN_ARROW (0x1c..0x1f,
+// beta6 InterfaceDefs.h:74-77) that InterfaceDefs.cpp binds and that the
+// merged Be namespace must keep. Nested names stay reachable as
+// BControlLookEnum.B_LEFT_ARROW etc.
 /*
 m.attr("B_LEFT_BORDER") = BControlLook::B_LEFT_BORDER;
 m.attr("B_RIGHT_BORDER") = BControlLook::B_RIGHT_BORDER;
@@ -562,10 +568,15 @@ m.attr("B_RIGHT_BORDER") = 1 << 1;
 m.attr("B_TOP_BORDER") = 1 << 2;
 m.attr("B_BOTTOM_BORDER") = 1 << 3;
 m.attr("B_ALL_BORDERS") = py::int_(BControlLook::B_LEFT_BORDER | BControlLook::B_RIGHT_BORDER | BControlLook::B_TOP_BORDER | BControlLook::B_BOTTOM_BORDER);
-m.attr("B_LEFT_ARROW") = 0;
-m.attr("B_RIGHT_ARROW") = 1;
-m.attr("B_UP_ARROW") = 2;
-m.attr("B_DOWN_ARROW") = 3;
+// FIXED (2026-10-25): renamed — these are BControlLook's nested enum
+// values (beta6 ControlLook.h:67-70, 0..3); the un-prefixed names belong
+// to the global cursor ids in InterfaceDefs.h:74-77 (0x1c..0x1f).
+// (int literals: raw enum constants break `m.attr(X) = <enum>` at module
+// init in this pybind11 3.0 build)
+m.attr("B_CONTROL_LOOK_LEFT_ARROW") = 0;
+m.attr("B_CONTROL_LOOK_RIGHT_ARROW") = 1;
+m.attr("B_CONTROL_LOOK_UP_ARROW") = 2;
+m.attr("B_CONTROL_LOOK_DOWN_ARROW") = 3;
 m.attr("B_LEFT_UP_ARROW") = 4;
 m.attr("B_RIGHT_UP_ARROW") = 5;
 m.attr("B_RIGHT_DOWN_ARROW") = 6;
@@ -803,11 +814,11 @@ BRect  rect2;
     return rect;
 }
 , "", py::arg("view"), py::arg("updateRect"), py::arg("base"), py::arg("flags")=0, py::arg("borders")=MyClass::various::B_ALL_BORDERS)
-.def("DrawLabel", py::overload_cast<BView *, const char *, BRect, const BRect &, const rgb_color &, uint32, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("textColor")=NULL)
-.def("DrawLabel", py::overload_cast<BView *, const char *, BRect, const BRect &, const rgb_color &, uint32, const BAlignment &, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("alignment"), py::arg("textColor")=NULL)
-.def("DrawLabel", py::overload_cast<BView *, const char *, const rgb_color &, uint32, const BPoint &, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("base"), py::arg("flags"), py::arg("where"), py::arg("textColor")=NULL)
-.def("DrawLabel", py::overload_cast<BView *, const char *, const BBitmap *, BRect, const BRect &, const rgb_color &, uint32, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("icon"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("textColor")=NULL)
-.def("DrawLabel", py::overload_cast<BView *, const char *, const BBitmap *, BRect, const BRect &, const rgb_color &, uint32, const BAlignment &, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("icon"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("alignment"), py::arg("textColor")=NULL)
+.def("DrawLabel", py::overload_cast<BView *, const char *, BRect, const BRect &, const rgb_color &, uint32, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("textColor") = py::none())
+.def("DrawLabel", py::overload_cast<BView *, const char *, BRect, const BRect &, const rgb_color &, uint32, const BAlignment &, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("alignment"), py::arg("textColor") = py::none())
+.def("DrawLabel", py::overload_cast<BView *, const char *, const rgb_color &, uint32, const BPoint &, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("base"), py::arg("flags"), py::arg("where"), py::arg("textColor") = py::none())
+.def("DrawLabel", py::overload_cast<BView *, const char *, const BBitmap *, BRect, const BRect &, const rgb_color &, uint32, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("icon"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("textColor") = py::none())
+.def("DrawLabel", py::overload_cast<BView *, const char *, const BBitmap *, BRect, const BRect &, const rgb_color &, uint32, const BAlignment &, const rgb_color *>(&BControlLook::DrawLabel), "", py::arg("view"), py::arg("label"), py::arg("icon"), py::arg("rect"), py::arg("updateRect"), py::arg("base"), py::arg("flags"), py::arg("alignment"), py::arg("textColor") = py::none())
 .def("GetFrameInsets", [](BControlLook& self,BControlLook::frame_type frameType,uint32 flags) {
     float  _left;
 float  _top;

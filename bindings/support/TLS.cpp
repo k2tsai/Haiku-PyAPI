@@ -9,6 +9,9 @@ namespace py = pybind11;
 //TODO: Please, test this module
 PYBIND11_MODULE(TLS, m)
 {
+// beta6: TLS.h:21 — max 64 process-wide TLS keys
+m.attr("TLS_MAX_KEYS") = TLS_MAX_KEYS;
+
 m.def("tls_allocate", &tls_allocate, "");
 
 m.def("tls_get", &tls_get, "", py::arg("index"));
